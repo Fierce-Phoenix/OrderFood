@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="dash">
+    <aside class="sidebar" aria-label="Dashboard menu">
+        <h2>{% block side_title %}{% endblock %}</h2>
+        {% block side_links %}{% endblock %}
+    </aside>
+    <div class="dash-main">{% block content %}{% endblock %}</div>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block title %}My orders - OrderFood{% endblock %}
+{% block content %}
+<h1>My orders</h1>
+{% if not detail %}
+<p>No orders yet. <a href="{{ url_for('home') }}">Find something to eat</a>.</p>
+{% else %}
+{% set o = detail.order %}{% set d = detail.delivery %}
+<div class="tabs" role="tablist">
+    {% for r in rows %}
+    <a class="tab {% if r.id == o.id %}active{% endif %}" href="{{ url_for('orders', order=r.id) }}">#{{ r.id }} {{ r.rest_name }}</a>
+    {% endfor %}
+</div>
+<div class="box">
+    <div class="row between"><h3 style="margin:0">Order #{{ o.id }} from {{ o.rest_name }}</h3>
+        <span class="pill pill-{{ o.status }}">{{ o.status|label }}</span></div>
+
+    {% if o.status in ('rejected', 'cancelled', 'delivery_failed') %}
+        <div class="notice" role="status">
+            {% if o.status == 'rejected' %}The restaurant could not take this order.
+            {% elif o.status == 'cancelled' %}You cancelled this order.
+            {% else %}This order could not be delivered{% if d and d.fail_reason %}: {{ d.fail_reason }}{% endif %}.{% endif %}
+            {{ o.total_amount|money }} was refunded to your wallet.</div>
+    {% else %}
+        <ol class="steps" aria-label="Order status">
+            {% for label_, done in detail.steps %}<li class="{% if done %}done{% endif %}">{{ label_ }}
+                <span class="state">{{ '(done)' if done else '(waiting)' }}</span></li>{% endfor %}
+        </ol>
+        {% if o.status in ('pending', 'preparing', 'ready', 'out_for_delivery') %}
+            <p class="muted">About {{ o.estimated_delivery_time|int }} min delivery estimate.</p>{% endif %}
+    {% endif %}
+
+    <p><strong>Order:</strong> {% for i in detail['items'] %}{{ i.name }} x{{ i.qty }}{{ ', ' if not loop.last }}{% endfor %}<br>
+       <strong>Paid:</strong> {{ o.total_amount|money }}<br>
+       <strong>Deliver to:</strong> {{ o.delivery_address }}
+       {% if d and d.delivery_agent_id %}<br><strong>Delivery agent:</strong> {{ d.delivery_agent_name }}
+           {% if d.agent_note %}<br><span class="muted small">Note from agent: {{ d.agent_note }}</span>{% endif %}{% endif %}</p>
+
+    {% if o.status == 'pending' %}
+    <form method="POST" action="{{ url_for('cancel_order', order_id=o.id) }}">{{ csrf_input() }}
+        <button class="btn btn-danger" type="submit">Cancel order (refund)</button></form>
+    {% elif o.status == 'delivered' %}
+    <h3>Delivery confirmation</h3>
+    <p>Once it arrives, let us know you got it.</p>
+    <div class="row">
+        <form method="POST" action="{{ url_for('confirm_delivery', order_id=o.id) }}">{{ csrf_input() }}
+            <input type="hidden" name="next" value="{{ url_for('orders', order=o.id) }}">
+            <button class="btn" type="submit">I received my order</button></form>
+        <form method="POST" action="{{ url_for('report_problem', order_id=o.id) }}">{{ csrf_input() }}
+            <button class="btn btn-secondary" type="submit">Report a problem</button></form>
+    </div>
+    {% elif o.status in ('preparing', 'ready', 'out_for_delivery') %}
+    <button class="btn" disabled title="Available after the order is marked delivered">I received my order</button>
+    <p class="small muted">This button works once the order is marked delivered.</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

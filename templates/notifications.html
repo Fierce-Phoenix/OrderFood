@@ -1,0 +1,8 @@
+{% extends "layout.html" %}
+{% block title %}Notifications - OrderFood{% endblock %}
+{% block content %}
+<h1>Notifications</h1>
+{% for n in rows %}
+<div class="box {% if not n.is_read %}notice{% endif %}"><span class="muted small">{{ n.created_at }} UTC</span><br>{{ n.message }}</div>
+{% else %}<p class="muted">Nothing here yet.</p>{% endfor %}
+{% endblock %}

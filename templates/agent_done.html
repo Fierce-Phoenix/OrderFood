@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block title %}Delivery done - OrderFood{% endblock %}
+{% block content %}
+<div class="box narrow">
+    <h1>Delivery completed</h1>
+    <p>Nice work! The customer will confirm they got it.</p>
+    <p>You earned <strong style="font-size:1.6rem">{{ d.payout|money }}</strong><br>
+       <span class="muted">{{ PAY_LABELS[d.payment_method] }} &middot; {{ d.distance_km }} km</span></p>
+    <p>Wallet: <strong>{{ wallet['balance']|money }}</strong></p>
+    <p class="muted">From {{ d.rest_name }}<br>To {{ d.delivery_address }}</p>
+    <a class="btn btn-block" href="{{ url_for('delivery_agent_dashboard') }}">Back to dashboard</a>
+</div>
+{% endblock %}

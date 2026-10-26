@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block title %}Register - OrderFood{% endblock %}
+{% block content %}
+<div class="box narrow">
+    <h1>Create account</h1>
+    <form method="POST">
+        {{ csrf_input() }}
+        <label for="name">Full name</label>
+        <input type="text" name="name" id="name" required value="{{ request.form.get('name', '') }}">
+        <label for="email">Email address</label>
+        <input type="email" name="email" id="email" required value="{{ request.form.get('email', '') }}">
+        <label for="password">Password (at least 8 characters)</label>
+        <input type="password" name="password" id="password" required minlength="8" autocomplete="new-password">
+        <label for="role">Account type</label>
+        <select name="role" id="role" onchange="document.getElementById('rest-fields').hidden = this.value !== 'restaurant_admin'">
+            <option value="customer">Customer</option>
+            <option value="restaurant_admin" {% if request.form.get('role') == 'restaurant_admin' %}selected{% endif %}>Restaurant owner</option>
+            <option value="delivery_agent" {% if request.form.get('role') == 'delivery_agent' %}selected{% endif %}>Delivery agent</option>
+        </select>
+        <div id="rest-fields" {% if request.form.get('role') != 'restaurant_admin' %}hidden{% endif %}>
+            <label for="restaurant_name">Restaurant name</label>
+            <input type="text" name="restaurant_name" id="restaurant_name" value="{{ request.form.get('restaurant_name', '') }}">
+            <label for="restaurant_address">Restaurant address</label>
+            <input type="text" name="restaurant_address" id="restaurant_address" value="{{ request.form.get('restaurant_address', '') }}">
+        </div>
+        <label for="accessibility_note">Accessibility note (optional)</label>
+        <input type="text" name="accessibility_note" id="accessibility_note" maxlength="200"
+               placeholder="e.g. I use a wheelchair / I am hard of hearing">
+        <p class="small muted">Shared with the delivery agent or customer you are matched with, so they can help you better.</p>
+        <p><button class="btn btn-block" type="submit">Register</button></p>
+    </form>
+    <p class="small muted">Already registered? <a href="{{ url_for('login') }}">Log in</a></p>
+</div>
+{% endblock %}

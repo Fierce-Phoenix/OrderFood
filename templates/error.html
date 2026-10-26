@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block title %}Error - OrderFood{% endblock %}
+{% block content %}
+<div class="error-page">
+    <div class="code">{{ code }}</div>
+    <p>{{ message }}</p>
+    <p><a class="btn" href="/">Back to home</a></p>
+</div>
+{% endblock %}

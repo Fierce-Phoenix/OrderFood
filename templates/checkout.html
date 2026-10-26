@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block title %}Payment - OrderFood{% endblock %}
+{% block content %}
+<h1>Payment</h1>
+<form method="POST" action="{{ url_for('checkout') }}">
+    {{ csrf_input() }}
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="box">
+        <label for="address">Deliver to</label>
+        <input type="text" id="address" name="address" required value="{{ address }}" placeholder="Flat / building, street, area">
+    </div>
+    <div class="box">
+        <h3>OrderFood wallet ({{ balance|money }})</h3>
+        <div class="table-wrap"><table>
+            <thead><tr><th>#</th><th>Restaurant</th><th class="right">Amount</th></tr></thead>
+            <tbody>
+            {% for grp in groups %}<tr><td>{{ loop.index }}</td><td>{{ grp.name }}</td><td class="right">{{ grp.subtotal|money }}</td></tr>{% endfor %}
+            <tr><th colspan="2">Total</th><th class="right">{{ total|money }}</th></tr>
+            </tbody></table></div>
+        <p>Wallet after payment:
+            <strong>{% if balance >= total %}{{ (balance - total)|money }}{% else %}not enough balance{% endif %}</strong></p>
+        {% if balance < total %}<div class="notice">Your wallet has less than the total. Payments are made one restaurant at a time, so some may fail.</div>{% endif %}
+    </div>
+    <div class="row">
+        <a class="btn btn-secondary" href="{{ url_for('view_cart') }}">Back to cart</a>
+        <button class="btn" type="submit">Pay {{ total|money }}</button>
+    </div>
+</form>
+{% endblock %}

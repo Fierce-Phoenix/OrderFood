@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% block title %}Log in - OrderFood{% endblock %}
+{% block content %}
+<div class="box narrow">
+    <h1>Log in</h1>
+    <form method="POST">
+        {{ csrf_input() }}
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" required autocomplete="username">
+        <label for="password">Password</label>
+        <input type="password" name="password" id="password" required autocomplete="current-password">
+        <p><button class="btn btn-block" type="submit">Log in</button></p>
+    </form>
+    <p class="small muted">No account? <a href="{{ url_for('register') }}">Register here</a></p>
+    <p class="small muted">Demo: customer@test.com / password123, admin@test.com / admin123, agent@test.com / agent123</p>
+</div>
+{% endblock %}

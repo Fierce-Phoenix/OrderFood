@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+{% block title %}{{ restaurant.name }} - OrderFood{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">&larr; Back to restaurants</a></p>
+<h1>{{ restaurant.name }}</h1>
+<p class="muted">{{ restaurant.address }} &middot; rated {{ restaurant.rating }}</p>
+
+{% if too_far %}
+<div class="notice" role="status"><strong>Too far to deliver.</strong>
+    {{ restaurant.name }} is about {{ delivery_time }} min away and we only deliver within 30 min. The menu is view only.</div>
+{% elif not restaurant.is_open %}
+<div class="notice" role="status"><strong>Closed right now.</strong> You can read the menu but cannot order.</div>
+{% else %}
+<div class="box" role="status">Estimated delivery: <strong>{{ delivery_time }} minutes</strong></div>
+{% endif %}
+
+<h2>Menu{% if too_far %} (view only){% endif %}</h2>
+{% set ns = namespace(cat='') %}
+{% for item in menu_items %}
+    {% if item.category != ns.cat %}{% set ns.cat = item.category %}<h3 class="category">{{ item.category }}</h3>{% endif %}
+    {% set qty = cart.get(item.id|string, 0) %}
+    <div class="menu-item {% if not item.is_available %}sold-out{% endif %}">
+        <div>
+            <h3>{{ item.name }}</h3>
+            <span class="muted">{{ item.price|money }}{% if not item.is_available %} &middot; Sold out{% endif %}</span>
+        </div>
+        {% if not too_far and restaurant.is_open and item.is_available %}
+            {% if qty %}
+            <div class="stepper" role="group" aria-label="Quantity of {{ item.name }}">
+                <form method="POST" action="{{ url_for('cart_update') }}">{{ csrf_input() }}
+                    <input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="action" value="dec">
+                    <input type="hidden" name="next" value="{{ url_for('restaurant_detail', rest_id=restaurant.id) }}">
+                    <button type="submit" aria-label="Remove one {{ item.name }}">&minus;</button></form>
+                <span class="qty">{{ qty }}</span>
+                <form method="POST" action="{{ url_for('cart_update') }}">{{ csrf_input() }}
+                    <input type="hidden" name="item_id" value="{{ item.id }}"><input type="hidden" name="action" value="inc">
+                    <input type="hidden" name="next" value="{{ url_for('restaurant_detail', rest_id=restaurant.id) }}">
+                    <button type="submit" aria-label="Add one more {{ item.name }}">+</button></form>
+            </div>
+            {% else %}
+            <form method="POST" action="{{ url_for('add_to_cart') }}">{{ csrf_input() }}
+                <input type="hidden" name="item_id" value="{{ item.id }}">
+                <input type="hidden" name="next" value="{{ url_for('restaurant_detail', rest_id=restaurant.id) }}">
+                <button type="submit" class="btn btn-small" aria-label="Add {{ item.name }} to cart">Add</button>
+            </form>
+            {% endif %}
+        {% endif %}
+    </div>
+{% endfor %}
+
+{% if cart_count and not too_far %}
+<div class="total-bar"><span>Cart: {{ cart_count }} item{{ '' if cart_count == 1 else 's' }}</span>
+    <a class="btn" href="{{ url_for('view_cart') }}">View cart</a></div>
+{% endif %}
+{% endblock %}

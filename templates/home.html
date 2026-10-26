@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% block title %}Restaurants - OrderFood{% endblock %}
+{% block content %}
+{% for o in awaiting %}
+<div class="notice" role="status">
+    <strong>Did you receive your last order?</strong>
+    {{ o.rest_name }}: {{ o.summary }}. Confirm it before placing a new order.
+    <div class="row" style="margin-top:.6rem">
+        <form method="POST" action="{{ url_for('confirm_delivery', order_id=o.id) }}" class="inline">
+            {{ csrf_input() }}<button class="btn btn-small" type="submit">Yes, I received it</button>
+        </form>
+        <form method="POST" action="{{ url_for('report_problem', order_id=o.id) }}" class="inline">
+            {{ csrf_input() }}<button class="btn btn-secondary btn-small" type="submit">No, report a problem</button>
+        </form>
+    </div>
+</div>
+{% endfor %}
+
+<form method="GET" class="field-inline">
+    <div>
+        <label for="q">Search restaurants</label>
+        <input type="text" id="q" name="q" value="{{ q }}" placeholder="Biryani, salads, pizza...">
+    </div>
+    <div style="flex:0 0 auto"><button class="btn" type="submit">Search</button></div>
+</form>
+
+<h2 class="section-title">Restaurants that can deliver within 30 minutes</h2>
+<div class="grid">
+    {% for rest, time in reachable %}
+    <article class="card">
+        <h3>{{ rest.name }}</h3>
+        <p>{{ rest.description }}</p>
+        <span class="meta">{{ time }} min &middot; rated {{ rest.rating }}{% if not rest.is_open %} &middot; Closed now{% endif %}</span>
+        <a href="{{ url_for('restaurant_detail', rest_id=rest.id) }}" class="btn" aria-label="View menu for {{ rest.name }}">View menu</a>
+    </article>
+    {% else %}
+    <p class="muted">No restaurants match your search.</p>
+    {% endfor %}
+</div>
+
+{% if too_far %}
+<h2 class="section-title">Over 30 minutes (view only, can't order)</h2>
+<div class="grid">
+    {% for rest, time in too_far %}
+    <article class="card too-far">
+        <h3>{{ rest.name }}</h3>
+        <p>{{ rest.description }}</p>
+        <span class="meta">{{ time }} min away</span>
+        <a href="{{ url_for('restaurant_detail', rest_id=rest.id) }}" class="btn btn-secondary" aria-label="View read-only menu for {{ rest.name }}">View menu</a>
+    </article>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

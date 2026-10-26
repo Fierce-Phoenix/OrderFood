@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% block title %}Your cart - OrderFood{% endblock %}
+{% block content %}
+<h1>Your cart</h1>
+{% if groups %}
+<p class="muted">Each restaurant is a separate order with its own payment.</p>
+{% for grp in groups %}
+<section class="box" aria-label="Order from {{ grp.name }}">
+    <h3>{{ grp.name }} <span class="muted small">({{ grp.minutes }} min)</span></h3>
+    {% for p in grp.problems %}<div class="notice" role="alert">{{ p }}</div>{% endfor %}
+    {% for it in grp['items'] %}
+    <div class="cart-item {% if not it.available %}bad{% endif %}">
+        <span class="name">{{ it.name }}{% if not it.available %} <strong>(sold out)</strong>{% endif %}</span>
+        <span class="row">
+            {% if it.available %}
+            <span class="stepper">
+                <form method="POST" action="{{ url_for('cart_update') }}">{{ csrf_input() }}
+                    <input type="hidden" name="item_id" value="{{ it.id }}"><input type="hidden" name="action" value="dec">
+                    <button type="submit" aria-label="Remove one {{ it.name }}">&minus;</button></form>
+                <span class="qty">{{ it.qty }}</span>
+                <form method="POST" action="{{ url_for('cart_update') }}">{{ csrf_input() }}
+                    <input type="hidden" name="item_id" value="{{ it.id }}"><input type="hidden" name="action" value="inc">
+                    <button type="submit" aria-label="Add one more {{ it.name }}">+</button></form>
+            </span>
+            {% endif %}
+            <strong>{{ it.line|money }}</strong>
+            <form method="POST" action="{{ url_for('cart_update') }}" class="inline">{{ csrf_input() }}
+                <input type="hidden" name="item_id" value="{{ it.id }}"><input type="hidden" name="action" value="remove">
+                <button type="submit" class="btn btn-danger btn-small">Remove</button></form>
+        </span>
+        {% if not it.available and replacements.get(grp.restaurant_id) %}
+        <form method="POST" action="{{ url_for('cart_replace') }}" class="field-inline" style="width:100%">{{ csrf_input() }}
+            <input type="hidden" name="old_id" value="{{ it.id }}">
+            <div><label for="rep{{ it.id }}">Replace with (same restaurant)</label>
+            <select name="new_id" id="rep{{ it.id }}">
+                {% for r in replacements[grp.restaurant_id] %}<option value="{{ r.id }}">{{ r.name }} - {{ r.price|money }}</option>{% endfor %}
+            </select></div>
+            <div style="flex:0 0 auto"><button class="btn btn-small" type="submit">Replace</button></div>
+        </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+    <div class="subtotal"><span>Transaction {{ loop.index }}</span><span>{{ grp.subtotal|money }}</span></div>
+</section>
+{% endfor %}
+<div class="total-bar"><span>Total: {{ total|money }}</span>
+    <span class="row"><a class="btn btn-secondary" href="{{ url_for('home') }}">Add more</a>
+    {% if blocked %}<button class="btn" disabled>Checkout</button>
+    {% else %}<a class="btn" href="{{ url_for('checkout_review') }}">Checkout</a>{% endif %}</span></div>
+{% else %}
+<p>Your cart is empty. <a href="{{ url_for('home') }}">Go find some food!</a></p>
+{% endif %}
+{% endblock %}
