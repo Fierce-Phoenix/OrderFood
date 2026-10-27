@@ -2,6 +2,24 @@
 
 Food ordering platform (Flask + SQLite) with three interfaces: customer, restaurant, delivery agent.
 
+## About
+
+CS100 group project by **Vihaan Sujesh** and **Prathamesh Kashelkar**.
+
+Food delivery platforms like Swiggy and Zomato charge restaurants commissions of roughly 25-30% per
+order, and delivery agents are often paid minimum wage with no say in how they're compensated.
+OrderFood is a transparent alternative: an open portal where customers order food, restaurants manage
+their own menus and orders, and delivery agents pick their own payment method (per order, per km, or
+per minute) and choose which deliveries to take.
+
+Three stakeholders, three dashboards, one platform:
+- **Customers** browse restaurants within a 30-minute delivery radius, order from multiple restaurants
+  in one cart (each billed separately), pay from an in-app wallet, and track delivery status.
+- **Restaurants** manage their menu and availability, accept or reject orders, and request a delivery
+  agent or self-deliver.
+- **Delivery agents** see open delivery requests, accept the ones they want, and get paid by their
+  chosen method.
+
 ## Run
     pip install -r requirements.txt
     python orderfood_app.py          # http://127.0.0.1:9000
