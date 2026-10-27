@@ -343,13 +343,19 @@ def init_database():
 
     if cur.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 0:
         demo = [
-            ('customer@test.com', 'John Customer', 'password123', 'customer', None),
-            ('admin@test.com', 'Bob Burger', 'admin123', 'restaurant_admin', 5),
-            ('agent@test.com', 'Dave Delivery', 'agent123', 'delivery_agent', None),
+            ('alice.customer@example.com', 'Alice Wonderland', 'AlicePass123!', 'customer', None),
+            ('bob.customer@example.com', 'Bob Builder', 'BobPass456!', 'customer', None),
+            ('charlie.customer@example.com', 'Charlie Brown', 'CharliePass789!', 'customer', None),
+            ('anna.admin@example.com', 'Anna Apple', 'AnnaAdmin123!', 'restaurant_admin', 1),
+            ('ben.admin@example.com', 'Ben Banana', 'BenAdmin456!', 'restaurant_admin', 2),
+            ('cat.admin@example.com', 'Cat Cherry', 'CatAdmin789!', 'restaurant_admin', 3),
+            ('david.agent@example.com', 'David Driver', 'DavidAgent123!', 'delivery_agent', None),
+            ('elena.agent@example.com', 'Elena Express', 'ElenaAgent456!', 'delivery_agent', None),
+            ('frank.agent@example.com', 'Frank Fast', 'FrankAgent789!', 'delivery_agent', None),
         ]
         cur.executemany('INSERT INTO users (email, name, password, role, restaurant_id) VALUES (?,?,?,?,?)',
                         [(e, n, generate_password_hash(p), r, rid) for e, n, p, r, rid in demo])
-    cur.execute("UPDATE users SET restaurant_id = 5 WHERE email = 'admin@test.com' AND restaurant_id IS NULL")
+    # Removed specific manual update for admin@test.com
     conn.commit()
 
     # Make sure every user has a wallet (older databases never created them).
@@ -469,9 +475,9 @@ def http_error(err):
     return render_template('error.html', code=err.code, message=err.description), err.code
 
 
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
+@app.route('/about')
+def about():
+    return render_template('about.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():

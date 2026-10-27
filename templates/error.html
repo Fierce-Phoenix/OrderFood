@@ -1,10 +1,197 @@
 {% extends "layout.html" %}
-{% block title %}Error - OrderFood{% endblock %}
+{% block title %}Oops! Something went wrong - OrderFood{% endblock %}
 {% block content %}
-<div class="error-page">
-    <svg class="illo" aria-hidden="true"><use href="#icon-broken"/></svg>
-    <div class="code">{{ code }}</div>
-    <p>{{ message }}</p>
-    <p><a class="btn btn-accent" href="/">Back to home</a></p>
+<div class="meme-error-container">
+    <div class="meme-header">
+        <div class="error-code">{{ code }}</div>
+        <h1>{{ "Whoops!" if code == 404 else "Yikes!" if code == 500 else "Hmm..." }}</h1>
+        <p class="error-explanation">
+            {% if code == 404 %}
+                You've wandered into a digital wasteland. The page you're looking for probably decided to order food and leave the building.
+            {% elif code == 500 %}
+                Our server had a mid-life crisis. It's currently questioning its existence and forgot how to serve you food.
+            {% else %}
+                The internet gods are displeased. You've triggered a cosmic glitch in the food-ordering matrix.
+            {% endif %}
+        </p>
+        <p class="funny-note">While we fix this, why not challenge your boredom with some Snake?</p>
+    </div>
+
+    <div class="game-section">
+        <canvas id="snakeGame" width="400" height="400"></canvas>
+        <div class="game-controls">
+            <p>Score: <span id="score">0</span></p>
+            <p class="hint">Use Arrow Keys to move the snake!</p>
+            <button id="startBtn" class="btn btn-accent">Start Game</button>
+        </div>
+    </div>
+
+    <div class="footer-links">
+        <a class="btn btn-outline" href="/">Go back to safety</a>
+    </div>
 </div>
+
+<style>
+    .meme-error-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 40px 20px;
+        font-family: 'Comic Sans MS', 'Chalkboard SE', cursive, sans-serif;
+    }
+    .meme-header {
+        margin-bottom: 30px;
+    }
+    .error-code {
+        font-size: 8rem;
+        font-weight: 900;
+        color: var(--accent-color, #ff4757);
+        line-height: 1;
+        margin-bottom: 10px;
+        text-shadow: 4px 4px 0px rgba(0,0,0,0.1);
+    }
+    .meme-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 15px;
+    }
+    .error-explanation {
+        font-size: 1.2rem;
+        max-width: 600px;
+        margin: 0 auto 20px;
+        color: #555;
+    }
+    .funny-note {
+        font-style: italic;
+        color: #888;
+        margin-bottom: 30px;
+    }
+    .game-section {
+        background: #2f3542;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        display: inline-block;
+    }
+    #snakeGame {
+        background: #000;
+        border: 4px solid #fff;
+        display: block;
+    }
+    .game-controls {
+        color: #fff;
+        margin-top: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .game-controls p {
+        margin: 0;
+        font-weight: bold;
+    }
+    .hint {
+        font-size: 0.9rem;
+        font-weight: normal !important;
+        opacity: 0.8;
+    }
+    .footer-links {
+        margin-top: 40px;
+    }
+</style>
+
+<script>
+(function() {
+    const canvas = document.getElementById('snakeGame');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const startBtn = document.getElementById('startBtn');
+
+    const box = 20;
+    let snake, food, score, direction, gameInterval;
+
+    function initGame() {
+        snake = [{x: 9 * box, y: 10 * box}];
+        food = {
+            x: Math.floor(Math.random() * 19 + 1) * box,
+            y: Math.floor(Math.random() * 19 + 1) * box
+        };
+        score = 0;
+        direction = "RIGHT";
+        scoreEl.innerText = score;
+    }
+
+    document.addEventListener("keydown", (e) => {
+        if (e.keyCode == 37 && direction != "RIGHT") direction = "LEFT";
+        else if (e.keyCode == 38 && direction != "DOWN") direction = "UP";
+        else if (e.keyCode == 39 && direction != "LEFT") direction = "RIGHT";
+        else if (e.keyCode == 40 && direction != "UP") direction = "DOWN";
+    });
+
+    function draw() {
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = 0; i < snake.length; i++) {
+            ctx.fillStyle = (i == 0) ? "#2ecc71" : "#27ae60";
+            ctx.fillRect(snake[i].x, snake[i].y, box, box);
+            ctx.strokeStyle = "black";
+            ctx.strokeRect(snake[i].x, snake[i].y, box, box);
+        }
+
+        ctx.fillStyle = "#e74c3c";
+        ctx.fillRect(food.x, food.y, box, box);
+
+        let snakeX = snake[0].x;
+        let snakeY = snake[0].y;
+
+        if (direction == "LEFT") snakeX -= box;
+        if (direction == "UP") snakeY -= box;
+        if (direction == "RIGHT") snakeX += box;
+        if (direction == "DOWN") snakeY += box;
+
+        if (snakeX == food.x && snakeY == food.y) {
+            score++;
+            scoreEl.innerText = score;
+            food = {
+                x: Math.floor(Math.random() * 19 + 1) * box,
+                y: Math.floor(Math.random() * 19 + 1) * box
+            };
+        } else {
+            snake.pop();
+        }
+
+        let newHead = {x: snakeX, y: snakeY};
+
+        if (snakeX < 0 || snakeX >= canvas.width || snakeY < 0 || snakeY >= canvas.height || collision(newHead, snake)) {
+            clearInterval(gameInterval);
+            ctx.fillStyle = "white";
+            ctx.font = "30px Arial";
+            ctx.fillText("GAME OVER!", canvas.width/4, canvas.height/2);
+            startBtn.style.display = "block";
+            startBtn.innerText = "Try Again";
+            return;
+        }
+
+        snake.unshift(newHead);
+    }
+
+    function collision(head, array) {
+        for (let i = 0; i < array.length; i++) {
+            if (head.x == array[i].x && head.y == array[i].y) return true;
+        }
+        return false;
+    }
+
+    startBtn.addEventListener('click', () => {
+        initGame();
+        startBtn.style.display = "none";
+        if (gameInterval) clearInterval(gameInterval);
+        gameInterval = setInterval(draw, 100);
+    });
+
+    initGame();
+    draw();
+})();
+</script>
 {% endblock %}

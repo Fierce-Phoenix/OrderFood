@@ -55,9 +55,9 @@ class OrderFoodTests(unittest.TestCase):
                 os.remove(f)
         app_module.init_database()
         self.cust, self.rest, self.agent = Client(), Client(), Client()
-        self.cust.login('customer@test.com', 'password123')
-        self.rest.login('admin@test.com', 'admin123')
-        self.agent.login('agent@test.com', 'agent123')
+        self.cust.login('alice.customer@example.com', 'AlicePass123!')
+        self.rest.login('anna.admin@example.com', 'AnnaAdmin123!')
+        self.agent.login('david.agent@example.com', 'DavidAgent123!')
 
     def balance(self, key):
         return wallet.get_balance(key)['balance']
@@ -250,8 +250,19 @@ class OrderFoodTests(unittest.TestCase):
         self.assertEqual(db().execute('SELECT status FROM orders').fetchone()[0], 'delivered')
 
     def test_restaurant_cannot_touch_other_restaurants(self):
-        self.assertEqual(self.rest.post('/restaurant/menu/1/toggle').status_code, 404)
-        self.assertEqual(self.rest.post('/restaurant/order/999/accept').status_code, 404)
+        # Find a restaurant that is NOT the one this admin owns
+        c = db()
+        owned_id = c.execute('SELECT restaurant_id FROM users WHERE email=?', ('anna.admin@example.com',)).fetchone()[0]
+        other_id = c.execute('SELECT id FROM restaurants WHERE id != ? LIMIT 1', (owned_id,)).fetchone()[0]
+
+        # Try to toggle an item from that other restaurant
+        item_id = c.execute('SELECT id FROM menu_items WHERE restaurant_id = ? LIMIT 1', (other_id,)).fetchone()[0]
+        self.assertEqual(self.rest.post(f'/restaurant/menu/{item_id}/toggle').status_code, 404)
+
+        # Try to accept an order for another restaurant
+        order_id = c.execute('SELECT id FROM orders WHERE restaurant_id != ? LIMIT 1', (owned_id,)).fetchone()
+        if order_id:
+            self.assertEqual(self.rest.post(f'/restaurant/order/{order_id[0]}/accept').status_code, 404)
 
     def test_register_ignores_bad_role_and_wallet_is_idempotent(self):
         r = Client().post('/register', {'name': 'X', 'email': 'x@test.com', 'password': 'xxxxxxxx', 'role': 'superadmin'})

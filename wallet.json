@@ -1,40 +1,6 @@
 {
   "1": {
-    "balance": 330.0,
+    "balance": 650.0,
     "currency": "INR"
-  },
-  "2": {
-    "balance": 0.0,
-    "currency": "INR"
-  },
-  "rest_5": {
-    "balance": 320.0,
-    "currency": "INR"
-  },
-  "3": {
-    "balance": 40.0,
-    "currency": "INR"
-  },
-  "_processed": {
-    "deduct:c06b039e94796a49-7": {
-      "wallet": "1",
-      "amount": 340.0
-    },
-    "credit:refund:order:1": {
-      "wallet": "1",
-      "amount": 340.0
-    },
-    "deduct:a0576029df669b02-5": {
-      "wallet": "1",
-      "amount": 320.0
-    },
-    "credit:restaurant:2": {
-      "wallet": "rest_5",
-      "amount": 320.0
-    },
-    "credit:agent:2": {
-      "wallet": "3",
-      "amount": 40.0
-    }
   }
 }

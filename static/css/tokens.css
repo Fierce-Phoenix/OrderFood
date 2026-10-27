@@ -1,35 +1,35 @@
 /* Design tokens: the single source of truth for colour, type, spacing, motion. */
 :root {
-    /* Colour -- warm ivory / charcoal / deep olive, one accent (terracotta) */
-    --c-bg: #F6F1E6;
+    /* Colour -- Violet Theme: Deep Royal Purple, soft lavender, and elegant gold */
+    --c-bg: #FBFBFF;
     --c-surface: #FFFFFF;
-    --c-surface-2: #FBF8F0;
-    --c-ink: #221E17;
-    --c-ink-soft: #55503F;
-    --c-ink-faint: #918A76;
-    --c-line: #E3DAC3;
-    --c-line-strong: #CFC3A3;
+    --c-surface-2: #F5F3FA;
+    --c-ink: #2D1B3D;
+    --c-ink-soft: #5C4B7A;
+    --c-ink-faint: #B2A7C5;
+    --c-line: #EBE9F3;
+    --c-line-strong: #D1CBE3;
 
-    --c-forest: #303D27;
-    --c-forest-soft: #475A3B;
-    --c-forest-tint: #E3E8DA;
+    --c-forest: #4B0082;
+    --c-forest-soft: #6A5ACD;
+    --c-forest-tint: #F2EFFF;
 
-    --c-accent: #C1572C;
-    --c-accent-dark: #9C431F;
-    --c-accent-tint: #F3DECB;
+    --c-accent: #7B68EE;
+    --c-accent-dark: #5A4DB1;
+    --c-accent-tint: #F0EFFF;
 
-    --c-success: #3F6B49;
-    --c-success-tint: #DEEBE0;
-    --c-danger: #9A4234;
-    --c-danger-tint: #F3DED7;
-    --c-warning: #8A6418;
-    --c-warning-tint: #F3E6C8;
+    --c-success: #3A7D44;
+    --c-success-tint: #E6F4E8;
+    --c-danger: #B22222;
+    --c-danger-tint: #FDECEC;
+    --c-warning: #C5A059;
+    --c-warning-tint: #FBF5E6;
 
-    --c-focus: #C1572C;
+    --c-focus: #7B68EE;
 
     /* Type */
-    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-    --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    --font-display: 'Segoe UI', 'Calibri', Candara, Segoe, 'Segoe WP', Arial, sans-serif;
+    --font-body: 'Segoe UI', 'Calibri', Candara, Segoe, 'Segoe WP', Arial, sans-serif;
     --size-xs: .8rem;
     --size-sm: .9rem;
     --size-base: 1rem;
@@ -76,7 +76,9 @@
 /* High-contrast accessibility mode overrides every token with a yellow-on-black scheme. */
 body.high-contrast {
     --c-bg: #000; --c-surface: #000; --c-surface-2: #000;
-    --c-ink: #ffff00; --c-ink-soft: #ffff00; --c-ink-faint: #ffff00;
+    --c-ink: #221E17;
+    --c-ink-soft: #55503F;
+    --c-ink-faint: #918A76;
     --c-line: #ffff00; --c-line-strong: #ffff00;
     --c-forest: #000; --c-forest-soft: #000; --c-forest-tint: #000;
     --c-accent: #ffff00; --c-accent-dark: #ffff00; --c-accent-tint: #000;

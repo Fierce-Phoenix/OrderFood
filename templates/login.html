@@ -5,25 +5,10 @@
 {% endblock %}
 {% block body %}
 <div class="auth-shell">
-    <section class="auth-hero" aria-hidden="true">
-        <div class="hero-fallback"></div>
-        <canvas id="hero-canvas"></canvas>
-        <div class="hero-copy">
-            <p class="eyebrow">Three stakeholders. One honest platform.</p>
-            <h1>Food delivery, without the 30% cut.</h1>
-            <p>Customers order from any restaurant within 30 minutes. Restaurants keep what they earn. Delivery agents
-               choose how they get paid, and which deliveries to take.</p>
-            <div class="hero-stats">
-                <div><strong>0%</strong><span>Hidden commission</span></div>
-                <div><strong>3</strong><span>Connected dashboards</span></div>
-                <div><strong>30 min</strong><span>Delivery radius</span></div>
-            </div>
-        </div>
-    </section>
-    <section class="auth-panel">
+    <div class="auth-panel">
         <div class="auth-card">
-            <p class="eyebrow">Welcome back</p>
-            <h1>Log in</h1>
+            <p class="eyebrow">Food delivery, without the 30% cut.</p>
+            <h1 style="margin-top: 0">Log in</h1>
             <form method="POST">
                 {{ csrf_input() }}
                 <label for="email">Email</label>
@@ -40,10 +25,8 @@
                 <button type="button" class="btn btn-secondary btn-small" onclick="ofFillDemo('agent@test.com','agent123')">Delivery agent</button>
             </div>
         </div>
-    </section>
+    </div>
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
-<script src="{{ url_for('static', filename='hero3d.js') }}"></script>
 {% endblock %}
