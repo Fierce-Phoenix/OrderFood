@@ -1,6 +1,7 @@
 # OrderFood
 
-Food ordering platform (Flask + SQLite) with three interfaces: customer, restaurant, delivery agent.
+A premium, art-directed food delivery platform (Flask + SQLite, server-rendered) with three
+interfaces: customer, restaurant owner, delivery agent.
 
 ## About
 
@@ -20,12 +21,24 @@ Three stakeholders, three dashboards, one platform:
 - **Delivery agents** see open delivery requests, accept the ones they want, and get paid by their
   chosen method.
 
+## Design
+
+A warm-ivory / deep-forest / terracotta-accent identity: `Fraunces` for display type, `Inter` for UI
+text, a small set of hand-drawn line icons (`templates/_icons.html`) standing in for cuisine tags and
+status glyphs instead of emoji, and curated food photography per restaurant with a graceful
+gradient+icon fallback (`static/interactions.js: ofImgFallback`) if a photo can't load. The customer
+login page carries a single Three.js hero (a slowly orbiting plate, `static/hero3d.js`) that skips
+itself under `prefers-reduced-motion`, on small screens, or without WebGL -- every other screen,
+especially the two dashboards, stays decoration-free and fast. Design tokens, shared components and
+page-specific layout live in `static/css/{tokens,base,components,pages}.css`.
+
 ## Run
     pip install -r requirements.txt
     python orderfood_app.py          # http://127.0.0.1:9000
     python -m unittest -v test_app   # 15 end-to-end tests
 
-Optional env vars: `ORDERFOOD_SECRET_KEY`, `ORDERFOOD_HOST` (default 127.0.0.1), `FLASK_DEBUG=1`.
+Optional env vars: `ORDERFOOD_SECRET_KEY`, `ORDERFOOD_HOST` (default 127.0.0.1), `ORDERFOOD_PORT`
+(default 9000), `FLASK_DEBUG=1`.
 Start fresh any time by deleting `orderfood.db` and `wallet.json`. An old `orderfood.db` is upgraded automatically.
 
 ## Demo accounts
@@ -44,8 +57,36 @@ Start fresh any time by deleting `orderfood.db` and `wallet.json`. An old `order
 Note: only The Burger Joint (id 5) has an owner account, so orders for other restaurants stay "pending" unless you
 register a restaurant owner. Use The Burger Joint when demoing the full flow.
 
-## What changed from the previous version
-Bug fixes
+## What changed in this redesign
+Visual and interaction design
+- Full design system (colour/type/spacing/motion tokens, buttons, forms, cards, pills, toasts,
+  timeline, dashboards) replacing the old single generic stylesheet.
+- Restaurant discovery got real client-side filtering (cuisine chips, "open now", sort by time/rating)
+  and curated photography; the menu page got a sticky category nav with scrollspy and a floating cart
+  summary; checkout got a wallet meter and an explicit "simulated wallet" label; order tracking got an
+  animated timeline.
+- The restaurant dashboard's order list became a Kanban-style queue (New / Preparing / Ready-out /
+  History) over the same data, so the owner sees what needs attention at a glance. The agent dashboard
+  keeps its flat, fast, low-chrome layout on purpose.
+- Flash messages became auto-dismissing toasts with icons; buttons get a small press animation; cards
+  fade in on scroll. All of it respects `prefers-reduced-motion`, and every control still works as a
+  plain form/link with JavaScript off.
+- Accessibility toolbar (contrast, text size, text-to-speech, magnifier, voice input) kept byte-for-byte
+  functionally, just restyled.
+
+Bug fixes (this redesign)
+- `ExternalMapService` used to geocode addresses for real via Nominatim and run Haversine on the
+  result. Free-text delivery addresses like "Hostel Block B" geocode to arbitrary, sometimes very
+  distant, real-world places, so a restaurant well within range could suddenly read as thousands of
+  minutes away the moment a customer typed an address -- breaking the core 30-minute rule and making
+  checkout depend on a live third-party network call with no offline fallback. The service is now
+  fully mocked and deterministic (matching what the UI has always told the customer); the `requests`
+  dependency was removed.
+- `.secret_key` (the Flask session/CSRF signing key) was committed to the repo. It's now untracked and
+  gitignored; `orderfood_app.py` already generates one automatically if the file is missing. If you're
+  deploying this beyond local demo use, rotate the key (delete `.secret_key` and restart).
+
+Bug fixes (previous version)
 - Crash on start: duplicated `conn.commit()/conn.close()` in `init_database()` removed.
 - Syntax error in layout.html (`speechUtter utterance`) that broke the whole accessibility script.
 - `login.html`/`register.html`/dashboards no longer duplicate layout; everything extends `layout.html`.
@@ -76,6 +117,8 @@ Features from the deliverables
   working magnifier, voice input.
 
 ## Not implemented (mocked)
-Real maps API (delivery time/distance are mocked in `ExternalMapService`), real payment gateway (JSON-file wallet),
-"most affordable agent first" ordering (all free agents see every request, as in Deliverable 5), phone calls to customer.
-Agent payouts are platform-funded in this mock; restaurants are credited when the order is delivered.
+Real maps API (delivery time/distance are a deterministic mock in `ExternalMapService` -- no network
+calls are made), real payment gateway (JSON-file wallet, clearly labelled "simulated" at checkout),
+"most affordable agent first" ordering (all free agents see every request, as in Deliverable 5), phone
+calls to customer. Agent payouts are platform-funded in this mock; restaurants are credited when the
+order is delivered.
