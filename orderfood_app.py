@@ -13,7 +13,6 @@ import os
 import secrets
 import sqlite3
 import threading
-import requests
 from urllib.parse import quote_plus
 
 from flask import (Flask, abort, flash, g, redirect, render_template, request,
@@ -126,32 +125,18 @@ class ExternalWalletService:
 
 
 class ExternalMapService:
-    """Real-world integration with OpenStreetMap (Nominatim for Geocoding)."""
+    """Mock maps/geocoding provider. Delivery times are a deterministic estimate, not a real
+    routing calculation -- this app never calls a real maps API (see README).
 
-    def _get_coords(self, address):
-        """Helper to get latitude/longitude for an address using Nominatim."""
-        if not address:
-            return None
-        try:
-            # Nominatim requires a User-Agent
-            url = "https://nominatim.openstreetmap.org/search"
-            params = {'q': address, 'format': 'json', 'limit': 1}
-            headers = {'User-Agent': 'OrderFood-App-Educational'}
-
-            response = requests.get(url, params=params, headers=headers, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            if data:
-                return float(data[0]['lat']), float(data[0]['lon'])
-        except Exception as e:
-            print(f"Geocoding error for {address}: {e}")
-        return None
+    An earlier version of this class geocoded addresses for real via Nominatim and ran Haversine
+    on the result. That broke the product's core 30-minute rule: free-text addresses like
+    "Hostel Block B" geocode to arbitrary, often distant real-world places, so a nearby restaurant
+    could suddenly read as thousands of minutes away once a customer typed a delivery address. It
+    also meant checkout depended on a third-party network call with no offline fallback. Kept
+    fully mocked and deterministic instead, matching what the UI tells the customer.
+    """
 
     def calculate_delivery_time(self, restaurant_id, restaurant_address, customer_address=None):
-        """
-        Calculates delivery time.
-        Uses Nominatim for coordinates and Haversine for distance.
-        """
         # Simulate a map service failure for SOP 2 testing
         if (customer_address or "").lower() == "fail_map":
             raise RuntimeError("Maps API service is currently unavailable.")
@@ -160,30 +145,11 @@ class ExternalMapService:
             return 42
 
         if not customer_address:
-            # Fallback to a stable mock if no customer address is provided (e.g. home page)
+            # Stable mock for listings where no delivery address is known yet (e.g. home page).
             return 10 + (int(restaurant_id) * 7) % 16
 
-        # Real-world attempt: Geocode both addresses
-        res_coords = self._get_coords(restaurant_address)
-        cust_coords = self._get_coords(customer_address)
-
-        if res_coords and cust_coords:
-            import math
-            # Haversine formula for distance
-            R = 6371  # Earth radius in km
-            lat1, lon1 = map(math.radians, res_coords)
-            lat2, lon2 = map(math.radians, cust_coords)
-            dlat = lat2 - lat1
-            dlon = lon2 - lon1
-            a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-            distance = R * c
-
-            # Average city speed: 20 km/h (0.33 km/min)
-            # Time = Distance / Speed + 10 mins base (pickup/dropoff)
-            return int((distance / 0.33) + 10)
-
-        # Fallback if geocoding fails
+        # Deterministic mock once a delivery address is known: same two addresses always produce
+        # the same estimate, varied by how different the addresses look.
         diff = abs(len(restaurant_address or "") - len(customer_address or ""))
         return 10 + (diff % 20)
 
@@ -263,6 +229,41 @@ RESTAURANTS = [
     ('Samosa Station', 'Mumbai', 'Crispy samosas and chai', 4.3),
     ('The Vegan Hub', 'Mumbai', '100% plant-based delicacies', 4.5),
 ]
+
+# Presentation-only: a curated photo + cuisine icon + colour tone per restaurant, so cards never
+# fall back to a generic placeholder. Purely decorative -- no business logic reads this.
+CUISINE_LABELS = {'grain': 'Rice & grains', 'leaf': 'Salads & veg', 'fish': 'Seafood',
+                   'flame': 'Grilled & spicy', 'sweet': 'Desserts', 'drink': 'Drinks', 'spice': 'Curries & spice'}
+RESTAURANT_STYLE = {
+    'Annapurna Meals': ('photo-1546833999-b9f581a1996d', 'grain', 1),
+    'Spice Route Biryani': ('photo-1589302168068-964664d93dc0', 'grain', 2),
+    'Green Bowl Salads': ('photo-1512621776951-a57141f2eefd', 'leaf', 3),
+    'Coastal Kitchen': ('photo-1565557623262-b51c2513a641', 'fish', 4),
+    'The Burger Joint': ('photo-1568901346375-23c9450c58cd', 'flame', 5),
+    'Pizza Planet': ('photo-1565299624946-b28f40a0ae38', 'flame', 1),
+    'Sushi Zen': ('photo-1579871494447-9811cf80d66c', 'fish', 2),
+    'Taco Town': ('photo-1551504734-5ee1c4a1479b', 'flame', 3),
+    'Wok Express': ('photo-1512058564366-18510be2db19', 'flame', 4),
+    'Pasta Palace': ('photo-1551183053-bf91a1d81141', 'grain', 5),
+    'Desert Delight': ('photo-1519676867240-f03562e64548', 'sweet', 1),
+    'Kebab Kingdom': ('photo-1529006557810-274b9b2fc783', 'flame', 2),
+    'The Pancake House': ('photo-1528207776546-365bb710ee93', 'sweet', 3),
+    'Dim Sum Dynasty': ('photo-1496116218417-1a781b1c416c', 'grain', 4),
+    'Mediterranean Magic': ('photo-1540420773420-3366772f4999', 'leaf', 5),
+    'Juice Junction': ('photo-1600271886742-f049cd451bba', 'drink', 1),
+    'The Steakhouse': ('photo-1600891964599-f61ba0e24092', 'flame', 2),
+    'Noodle Nation': ('photo-1569718212165-3a8278d5f624', 'grain', 3),
+    'Bake Street': ('photo-1509440159596-0249088772ff', 'grain', 4),
+    'Curry Corner': ('photo-1585937421612-70a008356fbe', 'spice', 5),
+    'Samosa Station': ('photo-1601050690597-df0568f70950', 'spice', 1),
+    'The Vegan Hub': ('photo-1604908176997-125f25cc6f3d', 'leaf', 2),
+}
+
+
+def restaurant_style(name):
+    photo, icon, tone = RESTAURANT_STYLE.get(name, (None, 'grain', 1))
+    url = f'https://images.unsplash.com/{photo}?auto=format&fit=crop&w=640&h=480&q=70' if photo else None
+    return {'photo_url': url, 'icon': icon, 'tone': tone, 'cuisine': CUISINE_LABELS[icon]}
 
 
 def init_database():
@@ -383,6 +384,7 @@ app.jinja_env.globals['csrf_input'] = lambda: Markup(
     f'<input type="hidden" name="_csrf" value="{csrf_token()}">')
 app.jinja_env.globals['PAY_LABELS'] = PAY_LABELS
 app.jinja_env.globals['PAY_RATES'] = PAY_RATES
+app.jinja_env.globals['restaurant_style'] = restaurant_style
 
 
 @app.template_filter('money')
@@ -1343,4 +1345,5 @@ init_database()
 
 if __name__ == '__main__':
     app.run(debug=os.environ.get('FLASK_DEBUG') == '1',
-            host=os.environ.get('ORDERFOOD_HOST', '127.0.0.1'), port=9000)
+            host=os.environ.get('ORDERFOOD_HOST', '127.0.0.1'),
+            port=int(os.environ.get('ORDERFOOD_PORT', 9000)))
