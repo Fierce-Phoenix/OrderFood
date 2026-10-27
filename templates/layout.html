@@ -4,9 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}OrderFood{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+    {% block extra_head %}{% endblock %}
 </head>
 <body id="main-body">
+    {% include "_icons.html" %}
     <a href="#content" class="skip-link">Skip to content</a>
     <div id="magnifier-glass" aria-hidden="true"></div>
 
@@ -20,7 +28,7 @@
     </div>
 
     <header class="topbar">
-        <a href="/" class="logo">OrderFood</a>
+        <a href="/" class="logo"><svg aria-hidden="true"><use href="#icon-mark"/></svg> OrderFood</a>
         <nav class="nav" aria-label="Main">
             {% if session.get('user_id') %}
                 <span class="wallet-info" aria-label="Wallet balance">
@@ -46,15 +54,22 @@
         </nav>
     </header>
 
-    <main id="content" tabindex="-1">
-        {% with messages = get_flashed_messages(with_categories=true) %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-stack" aria-live="polite">
             {% for category, message in messages %}
                 <div class="flash flash-{{ category }}" role="alert">{{ message }}</div>
             {% endfor %}
-        {% endwith %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    <main id="content" tabindex="-1">
         {% block body %}<div class="container">{% block content %}{% endblock %}</div>{% endblock %}
     </main>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='interactions.js') }}"></script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

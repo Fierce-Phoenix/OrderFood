@@ -2,24 +2,26 @@
 {% block title %}Delivery request - OrderFood{% endblock %}
 {% block content %}
 {% if not req %}
-<div class="error-page"><h1>Sorry, this request is gone</h1>
+<div class="error-page"><svg class="illo" aria-hidden="true"><use href="#icon-broken"/></svg>
+    <h1>Sorry, this request is gone</h1>
     <p>Another agent got to it first, or it is no longer available.</p>
-    <a class="btn" href="{{ url_for('delivery_agent_dashboard') }}">Back to requests</a></div>
+    <a class="btn btn-accent" href="{{ url_for('delivery_agent_dashboard') }}">Back to requests</a></div>
 {% else %}
-<p><a href="{{ url_for('delivery_agent_dashboard') }}">&larr; Back</a></p>
-<h1>Delivery request</h1>
-<div class="map-box">Map: <a href="{{ map_url }}" target="_blank" rel="noopener">open pickup location in OpenStreetMap</a></div>
+<a href="{{ url_for('delivery_agent_dashboard') }}" class="back-link"><svg aria-hidden="true"><use href="#icon-arrow-left"/></svg> Back</a>
+<p class="eyebrow">Delivery request</p>
+<h1>{{ req.rest_name }} &rarr; {{ req.delivery_address }}</h1>
+<div class="map-box">Map: <a href="{{ map_url }}" target="_blank" rel="noopener">open pickup location in OpenStreetMap</a> (mocked, not live navigation)</div>
 <div class="two-col">
     <div class="box"><h3>Pickup</h3><strong>{{ req.rest_name }}</strong><br>{{ req.rest_address }}</div>
     <div class="box"><h3>Drop</h3><strong>{{ req.delivery_address }}</strong>
         {% if req.customer_note %}<br><span class="muted">Customer note: {{ req.customer_note }}</span>{% endif %}</div>
     <div class="box"><h3>Trip</h3>Distance: {{ req.distance_km }} km<br>Estimated time: {{ req.estimated_delivery_time|int }} min<br>Order: {{ req.n_items }} item{{ '' if req.n_items == 1 else 's' }} (paid)</div>
-    <div class="box"><h3>Expected payment</h3><div style="font-size:2rem;font-weight:800">{{ payout|money }}</div>
-        {{ PAY_LABELS[agent.payment_method] }}</div>
+    <div class="box"><h3>Expected payment</h3><div class="payout">{{ payout|money }}</div>
+        <span class="muted small">{{ PAY_LABELS[agent.payment_method] }}</span></div>
 </div>
-<p class="muted small">Other agents can see this request too.</p>
+<p class="muted small">Other agents can see this request too &mdash; first to accept wins.</p>
 <div class="row">
-    <form method="POST" action="{{ url_for('agent_accept', delivery_id=req.id) }}">{{ csrf_input() }}<button class="btn" type="submit">Accept</button></form>
+    <form method="POST" action="{{ url_for('agent_accept', delivery_id=req.id) }}">{{ csrf_input() }}<button class="btn btn-accent" type="submit">Accept</button></form>
     <form method="POST" action="{{ url_for('agent_reject', delivery_id=req.id) }}"
           onsubmit="return confirm('Reject this delivery request? Other agents will get it instead.')">{{ csrf_input() }}
         <button class="btn btn-secondary" type="submit">Reject</button></form>

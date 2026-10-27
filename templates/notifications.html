@@ -1,8 +1,11 @@
 {% extends "layout.html" %}
 {% block title %}Notifications - OrderFood{% endblock %}
 {% block content %}
-<h1>Notifications</h1>
+<div class="page-head"><div><p class="eyebrow">Updates</p><h1>Notifications</h1></div></div>
 {% for n in rows %}
-<div class="box {% if not n.is_read %}notice{% endif %}"><span class="muted small">{{ n.created_at }} UTC</span><br>{{ n.message }}</div>
-{% else %}<p class="muted">Nothing here yet.</p>{% endfor %}
+<div class="box row" style="align-items:flex-start;gap:var(--sp-3)">
+    <svg style="width:18px;height:18px;flex:none;margin-top:.2rem;color:var(--c-accent)"><use href="#icon-bell"/></svg>
+    <div><span class="muted small">{{ n.created_at }} UTC</span><br>{{ n.message }}</div>
+</div>
+{% else %}<p class="empty-state"><svg><use href="#icon-bell"/></svg><br>Nothing here yet.</p>{% endfor %}
 {% endblock %}

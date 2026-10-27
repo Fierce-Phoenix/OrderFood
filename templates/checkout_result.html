@@ -1,18 +1,20 @@
 {% extends "layout.html" %}
 {% block title %}Payment result - OrderFood{% endblock %}
 {% block content %}
+<div class="container-narrow" style="max-width:680px">
 {% if results|selectattr('ok')|list %}<h1>Some payments did not go through</h1>{% else %}<h1>Payment failed</h1>{% endif %}
-<p>Failed orders were not placed and you were not charged for them. Their items are still in your cart.</p>
+<p class="muted">Failed orders were not placed and you were not charged for them. Their items are still in your cart.</p>
 <div class="table-wrap"><table>
     <thead><tr><th>Transaction</th><th>Restaurant</th><th>Amount</th><th>Status</th></tr></thead>
     <tbody>
     {% for r in results %}
     <tr><td>{{ r.n }}</td><td>{{ r.name }}</td><td>{{ r.amount|money }}</td>
-        <td>{% if r.ok %}Paid, order #{{ r.order_id }} placed{% else %}<strong>Failed</strong>: {{ r.message }}{% endif %}</td></tr>
+        <td>{% if r.ok %}<span class="pill pill-completed">Paid</span> order #{{ r.order_id }} placed{% else %}<span class="pill pill-disputed">Failed</span> {{ r.message }}{% endif %}</td></tr>
     {% endfor %}
     </tbody></table></div>
-<p class="row" style="margin-top:1rem">
-    <a class="btn" href="{{ url_for('checkout_review') }}">Retry payment</a>
+<p class="row" style="margin-top:var(--sp-4)">
+    <a class="btn btn-accent" href="{{ url_for('checkout_review') }}">Retry payment</a>
     <a class="btn btn-secondary" href="{{ url_for('view_cart') }}">Back to cart</a>
     <a class="btn btn-secondary" href="{{ url_for('orders') }}">My orders</a></p>
+</div>
 {% endblock %}

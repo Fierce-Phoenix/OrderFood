@@ -1,7 +1,8 @@
 {% extends "layout.html" %}
 {% block title %}Register - OrderFood{% endblock %}
 {% block content %}
-<div class="box narrow">
+<div class="box container-narrow" style="max-width:var(--w-narrow)">
+    <p class="eyebrow">Join OrderFood</p>
     <h1>Create account</h1>
     <form method="POST">
         {{ csrf_input() }}
@@ -26,8 +27,8 @@
         <label for="accessibility_note">Accessibility note (optional)</label>
         <input type="text" name="accessibility_note" id="accessibility_note" maxlength="200"
                placeholder="e.g. I use a wheelchair / I am hard of hearing">
-        <p class="small muted">Shared with the delivery agent or customer you are matched with, so they can help you better.</p>
-        <p><button class="btn btn-block" type="submit">Register</button></p>
+        <p class="small muted field-help">Shared with the delivery agent or customer you are matched with, so they can help you better.</p>
+        <p><button class="btn btn-accent btn-block" type="submit">Register</button></p>
     </form>
     <p class="small muted">Already registered? <a href="{{ url_for('login') }}">Log in</a></p>
 </div>

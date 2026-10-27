@@ -2,8 +2,9 @@
 {% block title %}Error - OrderFood{% endblock %}
 {% block content %}
 <div class="error-page">
+    <svg class="illo" aria-hidden="true"><use href="#icon-broken"/></svg>
     <div class="code">{{ code }}</div>
     <p>{{ message }}</p>
-    <p><a class="btn" href="/">Back to home</a></p>
+    <p><a class="btn btn-accent" href="/">Back to home</a></p>
 </div>
 {% endblock %}

@@ -7,10 +7,10 @@
 {% endblock %}
 {% block content %}
 <div class="row between" id="top">
-    <h1>My dashboard</h1>
+    <div><p class="eyebrow">Agent portal</p><h1>My dashboard</h1></div>
     <form method="POST" action="{{ url_for('agent_settings') }}">{{ csrf_input() }}
         <input type="hidden" name="toggle_available" value="1">
-        <button class="btn {% if not agent.is_available %}btn-secondary{% endif %}" type="submit">
+        <button class="btn {% if not agent.is_available %}btn-secondary{% else %}btn-accent{% endif %}" type="submit">
             {{ 'Available (click to go offline)' if agent.is_available else 'Offline (click to go available)' }}</button></form>
 </div>
 
@@ -21,37 +21,41 @@
 
 <div class="box">
     <h3>Payment method</h3>
-    <form method="POST" action="{{ url_for('agent_settings') }}" class="row">{{ csrf_input() }}
+    <form method="POST" action="{{ url_for('agent_settings') }}" class="segmented" role="group" aria-label="Payment method">
+        {{ csrf_input() }}
         {% for key, text in PAY_LABELS.items() %}
-        <button type="submit" name="payment_method" value="{{ key }}" class="btn btn-small {% if agent.payment_method != key %}btn-secondary{% endif %}"
-                {% if agent.payment_method == key %}aria-pressed="true"{% endif %}>
-            {{ text }}{% if agent.payment_method == key %} (selected){% endif %}</button>
+        <button type="submit" name="payment_method" value="{{ key }}"
+                {% if agent.payment_method == key %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>
+            {{ text }}</button>
         {% endfor %}
     </form>
-    <p class="small muted">Rates: &#8377;{{ PAY_RATES.per_order }} per order, &#8377;{{ PAY_RATES.per_km }} per km, &#8377;{{ PAY_RATES.per_min }} per minute.</p>
+    <p class="small muted" style="margin-top:.6rem">Rates: {{ PAY_RATES.per_order|money }} per order, {{ PAY_RATES.per_km|money }} per km, {{ PAY_RATES.per_min|money }} per minute.</p>
 </div>
 
-<h2 class="section-title">Active delivery</h2>
+<div class="section-head"><h2>Active delivery</h2></div>
 {% if active %}
 <div class="box row between"><span>Order #{{ active.order_id }} from {{ active.rest_name }} to {{ active.delivery_address }}
     <span class="pill pill-{{ active.status }}">{{ active.status|label }}</span></span>
-    <a class="btn" href="{{ url_for('agent_active') }}">Open</a></div>
+    <a class="btn btn-accent" href="{{ url_for('agent_active') }}">Open</a></div>
 {% else %}<p class="muted">No active delivery.</p>{% endif %}
 
-<h2 class="section-title" id="requests">New delivery requests</h2>
-{% if not agent.is_available %}<p class="muted">You are offline. Go available to see requests.</p>
+<div class="section-head" id="requests"><h2>New delivery requests</h2></div>
+{% if not agent.is_available %}<p class="empty-state"><svg><use href="#icon-empty"/></svg><br>You are offline. Go available to see requests.</p>
 {% elif requests %}
 {% for r in requests %}
-<div class="box row between">
-    <div><strong>{{ r.row.rest_name }}</strong> to {{ r.row.delivery_address }}<br>
-        <span class="muted">{{ r.row.distance_km }} km &middot; about {{ r.row.estimated_delivery_time|int }} min &middot; you earn <strong>{{ r.payout|money }}</strong></span></div>
-    <a class="btn" href="{{ url_for('agent_request', delivery_id=r.row.id) }}">View</a>
+<div class="box req-card">
+    <div><strong class="r-name">{{ r.row.rest_name }}</strong> <span class="muted">to {{ r.row.delivery_address }}</span><br>
+        <span class="muted small">{{ r.row.distance_km }} km &middot; about {{ r.row.estimated_delivery_time|int }} min</span></div>
+    <div class="row" style="align-items:center;gap:1rem">
+        <span class="payout">{{ r.payout|money }}</span>
+        <a class="btn btn-accent" href="{{ url_for('agent_request', delivery_id=r.row.id) }}">View</a>
+    </div>
 </div>
 {% endfor %}
-{% else %}<p class="muted">No pending deliveries right now. Check back soon!</p>{% endif %}
+{% else %}<p class="empty-state"><svg><use href="#icon-empty"/></svg><br>No pending deliveries right now. Check back soon!</p>{% endif %}
 
 {% if history %}
-<h2 class="section-title">Recent deliveries</h2>
+<div class="section-head"><h2>Recent deliveries</h2></div>
 <div class="table-wrap"><table>
     <thead><tr><th>Order</th><th>From</th><th>Result</th><th>Earned</th></tr></thead>
     <tbody>{% for h in history %}<tr><td>#{{ h.order_id }}</td><td>{{ h.rest_name }}</td>

@@ -1,8 +1,10 @@
 {% extends "layout.html" %}
 {% block title %}Confirm last order - OrderFood{% endblock %}
 {% block content %}
+<div class="container-narrow" style="max-width:680px">
+<p class="eyebrow">One step first</p>
 <h1>Finish your last order first</h1>
-<p>You can place a new order once your previous one has been delivered and you have confirmed it.</p>
+<p class="muted">You can place a new order once your previous one has been delivered and you have confirmed it.</p>
 {% for o in pending %}
 <div class="box row between">
     <span>Order #{{ o.id }} from {{ o.rest_name }}: <span class="pill pill-{{ o.status }}">{{ o.status|label }}</span></span>
@@ -18,4 +20,5 @@
 </div>
 {% endfor %}
 <p><a class="btn btn-secondary" href="{{ url_for('view_cart') }}">Back to cart</a></p>
+</div>
 {% endblock %}

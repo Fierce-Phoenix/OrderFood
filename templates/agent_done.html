@@ -1,13 +1,14 @@
 {% extends "layout.html" %}
 {% block title %}Delivery done - OrderFood{% endblock %}
 {% block content %}
-<div class="box narrow">
+<div class="box container-narrow" style="max-width:var(--w-narrow);text-align:center">
+    <svg style="width:40px;height:40px;color:var(--c-success);margin:0 auto var(--sp-3)"><use href="#icon-check"/></svg>
     <h1>Delivery completed</h1>
-    <p>Nice work! The customer will confirm they got it.</p>
-    <p>You earned <strong style="font-size:1.6rem">{{ d.payout|money }}</strong><br>
+    <p class="muted">Nice work! The customer will confirm they got it.</p>
+    <p>You earned <strong style="font-family:var(--font-display);font-size:2rem;color:var(--c-accent-dark)">{{ d.payout|money }}</strong><br>
        <span class="muted">{{ PAY_LABELS[d.payment_method] }} &middot; {{ d.distance_km }} km</span></p>
     <p>Wallet: <strong>{{ wallet['balance']|money }}</strong></p>
-    <p class="muted">From {{ d.rest_name }}<br>To {{ d.delivery_address }}</p>
-    <a class="btn btn-block" href="{{ url_for('delivery_agent_dashboard') }}">Back to dashboard</a>
+    <p class="muted small">From {{ d.rest_name }}<br>To {{ d.delivery_address }}</p>
+    <a class="btn btn-accent btn-block" href="{{ url_for('delivery_agent_dashboard') }}">Back to dashboard</a>
 </div>
 {% endblock %}

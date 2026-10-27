@@ -16,37 +16,100 @@
 </div>
 {% endfor %}
 
-<form method="GET" class="field-inline">
-    <div>
-        <label for="q">Search restaurants</label>
-        <input type="text" id="q" name="q" value="{{ q }}" placeholder="Biryani, salads, pizza...">
-    </div>
-    <div style="flex:0 0 auto"><button class="btn" type="submit">Search</button></div>
-</form>
-
-<h2 class="section-title">Restaurants that can deliver within 30 minutes</h2>
-<div class="grid">
-    {% for rest, time in reachable %}
-    <article class="card">
-        <h3>{{ rest.name }}</h3>
-        <p>{{ rest.description }}</p>
-        <span class="meta">{{ time }} min &middot; rated {{ rest.rating }}{% if not rest.is_open %} &middot; Closed now{% endif %}</span>
-        <a href="{{ url_for('restaurant_detail', rest_id=rest.id) }}" class="btn" aria-label="View menu for {{ rest.name }}">View menu</a>
-    </article>
-    {% else %}
-    <p class="muted">No restaurants match your search.</p>
-    {% endfor %}
+<div class="discovery-head">
+    <p class="eyebrow">Mumbai &middot; delivering within 30 minutes</p>
+    <h1>What are you hungry for?</h1>
+    <p>Every restaurant here keeps what it earns. Browse, build a cart from more than one kitchen, and pay each one separately.</p>
 </div>
 
+<form method="GET" class="search-row" role="search">
+    <div class="search-field">
+        <svg aria-hidden="true"><use href="#icon-search"/></svg>
+        <label for="q" class="visually-hidden">Search restaurants</label>
+        <input type="text" id="q" name="q" value="{{ q }}" placeholder="Search biryani, salads, pizza...">
+    </div>
+    <button class="btn" type="submit">Search</button>
+</form>
+
+{% set ns = namespace(cuisines=[]) %}
+{% for rest, time in reachable %}
+    {% set style = restaurant_style(rest.name) %}
+    {% if style.cuisine not in ns.cuisines %}{% set ns.cuisines = ns.cuisines + [style.cuisine] %}{% endif %}
+{% endfor %}
+{% if reachable %}
+<div class="filter-bar" data-discovery-controls>
+    <button type="button" class="chip" data-cuisine="all" aria-pressed="true">All cuisines</button>
+    {% for c in ns.cuisines %}<button type="button" class="chip" data-cuisine="{{ c }}" aria-pressed="false">{{ c }}</button>{% endfor %}
+    <span class="divider"></span>
+    <button type="button" class="chip" data-open-only aria-pressed="false">Open now</button>
+    <span class="divider"></span>
+    <label for="sort" class="visually-hidden">Sort</label>
+    <select id="sort" class="sort-select">
+        <option value="recommended">Sort: Recommended</option>
+        <option value="time">Sort: Fastest delivery</option>
+        <option value="rating">Sort: Highest rated</option>
+    </select>
+</div>
+{% endif %}
+
+<div class="section-head"><h2>Delivers to you in 30 minutes</h2></div>
+<div class="grid" data-discovery>
+    {% for rest, time in reachable %}
+    {% set style = restaurant_style(rest.name) %}
+    <article class="r-card reveal" data-cuisine="{{ style.cuisine }}" data-open="{{ 1 if rest.is_open else 0 }}"
+             data-minutes="{{ time }}" data-rating="{{ rest.rating }}" data-order="{{ loop.index }}">
+        <div class="media">
+            <div class="tone tone-{{ style.tone }}" {% if style.photo_url %}style="display:none"{% endif %}>
+                <svg aria-hidden="true"><use href="#icon-{{ style.icon }}"/></svg>
+            </div>
+            {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" loading="lazy" onerror="ofImgFallback(this)">{% endif %}
+            <div class="badge-row">
+                <span class="time-badge">{{ time }} min</span>
+                {% if not rest.is_open %}<span class="closed-badge">Closed now</span>{% endif %}
+            </div>
+        </div>
+        <div class="body">
+            <h3>{{ rest.name }}</h3>
+            <p class="cuisine">{{ style.cuisine }}</p>
+            <div class="meta-row">
+                <span class="rating"><svg aria-hidden="true"><use href="#icon-star"/></svg> {{ rest.rating }}</span>
+                <span>&middot;</span>
+                <span>{{ rest.description }}</span>
+            </div>
+            <a href="{{ url_for('restaurant_detail', rest_id=rest.id) }}" class="btn" aria-label="View menu for {{ rest.name }}">View menu</a>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+<p class="empty-state" data-discovery-empty hidden>
+    <svg><use href="#icon-empty"/></svg>
+    No restaurants match these filters right now.
+</p>
+{% if not reachable %}
+<p class="empty-state">
+    <svg><use href="#icon-empty"/></svg>
+    No restaurants match your search within 30 minutes.
+</p>
+{% endif %}
+
 {% if too_far %}
-<h2 class="section-title">Over 30 minutes (view only, can't order)</h2>
+<div class="section-head"><h2>Over 30 minutes away</h2><span class="muted small">View only &mdash; can't order</span></div>
 <div class="grid">
     {% for rest, time in too_far %}
-    <article class="card too-far">
-        <h3>{{ rest.name }}</h3>
-        <p>{{ rest.description }}</p>
-        <span class="meta">{{ time }} min away</span>
-        <a href="{{ url_for('restaurant_detail', rest_id=rest.id) }}" class="btn btn-secondary" aria-label="View read-only menu for {{ rest.name }}">View menu</a>
+    {% set style = restaurant_style(rest.name) %}
+    <article class="r-card too-far reveal">
+        <div class="media">
+            <div class="tone tone-{{ style.tone }}" {% if style.photo_url %}style="display:none"{% endif %}>
+                <svg aria-hidden="true"><use href="#icon-{{ style.icon }}"/></svg>
+            </div>
+            {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" loading="lazy" onerror="ofImgFallback(this)">{% endif %}
+            <div class="badge-row"><span class="time-badge">{{ time }} min away</span></div>
+        </div>
+        <div class="body">
+            <h3>{{ rest.name }}</h3>
+            <p class="cuisine">{{ style.cuisine }}</p>
+            <a href="{{ url_for('restaurant_detail', rest_id=rest.id) }}" class="btn btn-secondary" aria-label="View read-only menu for {{ rest.name }}">View menu</a>
+        </div>
     </article>
     {% endfor %}
 </div>

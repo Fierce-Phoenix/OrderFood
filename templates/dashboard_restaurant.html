@@ -5,11 +5,37 @@
 <a href="#top">Dashboard</a><a href="#orders">Orders</a><a href="#menu">Menu</a><a href="#info">Restaurant info</a><a href="#revenue">Revenue</a>
 {% endblock %}
 {% block content %}
+{% macro act(o, name, text, style='') %}
+    <form method="POST" action="{{ url_for('restaurant_order_action', order_id=o.id, action=name) }}" class="inline">
+        {{ csrf_input() }}<button class="btn btn-small {{ style }}" type="submit">{{ text }}</button></form>
+{% endmacro %}
+{% macro order_card(o) %}
+<div class="order-card">
+    <div class="oc-head"><strong>#{{ o.id }}</strong><span class="pill pill-{{ o.status }}">{{ o.status|label }}</span></div>
+    <div class="summary">{{ o.summary or '-' }} &middot; {{ o.total_amount|money }}</div>
+    <div class="addr">To {{ o.delivery_address }}</div>
+    {% if o.del_status not in ('not_requested', 'cancelled') and o.del_status != 'restaurant_fallback' %}
+        <div class="small muted" style="margin-bottom:.4rem">Delivery: {{ o.del_status|label }}{% if o.delivery_agent_name and o.delivery_agent_name not in ('Unassigned',) %} ({{ o.delivery_agent_name }}){% endif %}</div>
+    {% endif %}
+    {% if o.del_status == 'restaurant_fallback' %}<div class="fallback-note">No agent available: deliver it yourself.</div>{% endif %}
+    <div class="actions">
+    {% if o.status == 'pending' %}{{ act(o, 'accept', 'Accept') }}{{ act(o, 'reject', 'Reject', 'btn-danger') }}
+    {% elif o.status == 'preparing' %}{{ act(o, 'ready', 'Mark ready') }}
+        {% if o.del_status == 'not_requested' %}{{ act(o, 'request_agent', 'Request agent', 'btn-secondary') }}{% endif %}
+    {% elif o.status == 'ready' %}
+        {% if o.del_status == 'not_requested' %}{{ act(o, 'request_agent', 'Request agent') }}{% endif %}
+        {% if o.del_status in ('not_requested', 'pending', 'restaurant_fallback') %}{{ act(o, 'self_deliver', 'Self-deliver', 'btn-secondary') }}{% endif %}
+    {% elif o.status == 'out_for_delivery' and o.del_status == 'self' %}{{ act(o, 'self_delivered', 'Mark delivered') }}
+    {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
 <div class="row between" id="top">
-    <h1>{{ rest.name }}</h1>
+    <div><p class="eyebrow">Owner dashboard</p><h1>{{ rest.name }}</h1></div>
     <form method="POST" action="{{ url_for('restaurant_info') }}">{{ csrf_input() }}
         <input type="hidden" name="toggle_open" value="1">
-        <button class="btn {% if rest.is_open %}{% else %}btn-secondary{% endif %}" type="submit"
+        <button class="btn {% if rest.is_open %}btn-accent{% else %}btn-secondary{% endif %}" type="submit"
                 aria-label="Restaurant is {{ 'open' if rest.is_open else 'closed' }}. Click to switch.">
             {{ 'Open (click to close)' if rest.is_open else 'Closed (click to open)' }}</button>
     </form>
@@ -22,46 +48,33 @@
     <div class="stat"><div class="muted">Wallet</div><div class="num">{{ wallet['balance']|money }}</div></div>
 </div>
 
-<h2 class="section-title" id="orders">Orders</h2>
+<div class="section-head" id="orders"><h2>Order queue</h2></div>
 {% if orders %}
-<div class="table-wrap"><table>
-    <thead><tr><th>Order</th><th>Items</th><th>Deliver to</th><th>Paid</th><th>Status</th><th>Actions</th></tr></thead>
-    <tbody>
-    {% for o in orders %}
-    <tr>
-        <td>#{{ o.id }}</td>
-        <td>{{ o.summary or '-' }}</td>
-        <td>{{ o.delivery_address }}</td>
-        <td>{{ o.total_amount|money }}</td>
-        <td><span class="pill pill-{{ o.status }}">{{ o.status|label }}</span>
-            {% if o.del_status not in ('not_requested', 'cancelled') %}<br><span class="small muted">Delivery: {{ o.del_status|label }}{% if o.delivery_agent_name and o.delivery_agent_name not in ('Unassigned',) %} ({{ o.delivery_agent_name }}){% endif %}</span>{% endif %}
-            {% if o.del_status == 'restaurant_fallback' %}<br><strong class="small">No agent available: deliver it yourself.</strong>{% endif %}</td>
-        <td>
-            <div class="row">
-            {% macro act(name, text, style='') %}
-                <form method="POST" action="{{ url_for('restaurant_order_action', order_id=o.id, action=name) }}" class="inline">
-                    {{ csrf_input() }}<button class="btn btn-small {{ style }}" type="submit">{{ text }}</button></form>
-            {% endmacro %}
-            {% if o.status == 'pending' %}{{ act('accept', 'Accept order') }}{{ act('reject', 'Reject order', 'btn-danger') }}
-            {% elif o.status == 'preparing' %}{{ act('ready', 'Mark ready') }}
-                {% if o.del_status == 'not_requested' %}{{ act('request_agent', 'Request delivery agent', 'btn-secondary') }}{% endif %}
-            {% elif o.status == 'ready' %}
-                {% if o.del_status == 'not_requested' %}{{ act('request_agent', 'Request delivery agent') }}{% endif %}
-                {% if o.del_status in ('not_requested', 'pending', 'restaurant_fallback') %}{{ act('self_deliver', 'Self-deliver', 'btn-secondary') }}{% endif %}
-            {% elif o.status == 'out_for_delivery' and o.del_status == 'self' %}{{ act('self_delivered', 'Mark delivered') }}
-            {% else %}<span class="muted small">-</span>{% endif %}
-            </div>
-        </td>
-    </tr>
-    {% endfor %}
-    </tbody></table></div>
-{% else %}<p class="muted">No orders yet.</p>{% endif %}
+{% set new_o = orders|selectattr('status', 'equalto', 'pending')|list %}
+{% set prep_o = orders|selectattr('status', 'equalto', 'preparing')|list %}
+{% set ready_o = orders|selectattr('status', 'in', ['ready', 'out_for_delivery'])|list %}
+{% set done_o = orders|selectattr('status', 'in', ['delivered', 'completed', 'rejected', 'cancelled', 'disputed', 'delivery_failed'])|list %}
+<div class="queue">
+    <div class="queue-col"><h4>New <span class="count">{{ new_o|length }}</span></h4>
+        {% for o in new_o %}{{ order_card(o) }}{% endfor %}
+        {% if not new_o %}<p class="small muted">Nothing waiting.</p>{% endif %}</div>
+    <div class="queue-col"><h4>Preparing <span class="count">{{ prep_o|length }}</span></h4>
+        {% for o in prep_o %}{{ order_card(o) }}{% endfor %}
+        {% if not prep_o %}<p class="small muted">Nothing in the kitchen.</p>{% endif %}</div>
+    <div class="queue-col"><h4>Ready / out <span class="count">{{ ready_o|length }}</span></h4>
+        {% for o in ready_o %}{{ order_card(o) }}{% endfor %}
+        {% if not ready_o %}<p class="small muted">Nothing on the way.</p>{% endif %}</div>
+    <div class="queue-col"><h4>History <span class="count">{{ done_o|length }}</span></h4>
+        {% for o in done_o[:6] %}{{ order_card(o) }}{% endfor %}
+        {% if not done_o %}<p class="small muted">No completed orders yet.</p>{% endif %}</div>
+</div>
+{% else %}<p class="empty-state"><svg><use href="#icon-empty"/></svg><br>No orders yet.</p>{% endif %}
 
-<h2 class="section-title" id="menu">Menu</h2>
+<div class="section-head" id="menu"><h2>Menu</h2></div>
 <p class="muted">Customers can't order items marked unavailable.</p>
 {% for m in menu %}
 <div class="menu-item {% if not m.is_available %}sold-out{% endif %}">
-    <div><h3>{{ m.name }}</h3><span class="muted">{{ m.category }} &middot; {{ m.price|money }}</span></div>
+    <div><p class="item-name">{{ m.name }}</p><span class="muted small">{{ m.category }}</span></div>
     <div class="row">
         <form method="POST" action="{{ url_for('menu_edit', item_id=m.id, action='price') }}" class="row">{{ csrf_input() }}
             <label class="muted small" for="p{{ m.id }}" style="margin:0">Price</label>
@@ -75,15 +88,15 @@
     </div>
 </div>
 {% endfor %}
-<form method="POST" action="{{ url_for('menu_add') }}" class="box field-inline" style="margin-top:1rem">{{ csrf_input() }}
+<form method="POST" action="{{ url_for('menu_add') }}" class="box field-inline" style="margin-top:var(--sp-4)">{{ csrf_input() }}
     <div><label for="new-name">New item name</label><input type="text" id="new-name" name="name" required></div>
     <div><label for="new-price">Price</label><input type="number" id="new-price" name="price" min="1" step="0.5" required></div>
     <div><label for="new-cat">Category</label>
         <select id="new-cat" name="category"><option>Appetizers</option><option selected>Main Course</option><option>Desserts</option><option>Drinks</option></select></div>
-    <div style="flex:0 0 auto"><button class="btn" type="submit">Add item</button></div>
+    <div style="flex:0 0 auto"><button class="btn btn-accent" type="submit">Add item</button></div>
 </form>
 
-<h2 class="section-title" id="info">Restaurant info</h2>
+<div class="section-head" id="info"><h2>Restaurant info</h2></div>
 <form method="POST" action="{{ url_for('restaurant_info') }}" class="box">{{ csrf_input() }}
     <label for="r-name">Name</label><input type="text" id="r-name" name="name" required value="{{ rest.name }}">
     <label for="r-addr">Address / location</label><input type="text" id="r-addr" name="address" required value="{{ rest.address }}">

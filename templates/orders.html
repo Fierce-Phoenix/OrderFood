@@ -1,9 +1,9 @@
 {% extends "layout.html" %}
 {% block title %}My orders - OrderFood{% endblock %}
 {% block content %}
-<h1>My orders</h1>
+<div class="page-head"><div><p class="eyebrow">Order tracking</p><h1>My orders</h1></div></div>
 {% if not detail %}
-<p>No orders yet. <a href="{{ url_for('home') }}">Find something to eat</a>.</p>
+<p class="empty-state"><svg><use href="#icon-empty"/></svg><br>No orders yet. <a href="{{ url_for('home') }}">Find something to eat</a>.</p>
 {% else %}
 {% set o = detail.order %}{% set d = detail.delivery %}
 <div class="tabs" role="tablist">
@@ -22,7 +22,7 @@
             {% else %}This order could not be delivered{% if d and d.fail_reason %}: {{ d.fail_reason }}{% endif %}.{% endif %}
             {{ o.total_amount|money }} was refunded to your wallet.</div>
     {% else %}
-        <ol class="steps" aria-label="Order status">
+        <ol class="timeline" aria-label="Order status">
             {% for label_, done in detail.steps %}<li class="{% if done %}done{% endif %}">{{ label_ }}
                 <span class="state">{{ '(done)' if done else '(waiting)' }}</span></li>{% endfor %}
         </ol>
@@ -45,7 +45,7 @@
     <div class="row">
         <form method="POST" action="{{ url_for('confirm_delivery', order_id=o.id) }}">{{ csrf_input() }}
             <input type="hidden" name="next" value="{{ url_for('orders', order=o.id) }}">
-            <button class="btn" type="submit">I received my order</button></form>
+            <button class="btn btn-accent" type="submit">I received my order</button></form>
         <form method="POST" action="{{ url_for('report_problem', order_id=o.id) }}">{{ csrf_input() }}
             <button class="btn btn-secondary" type="submit">Report a problem</button></form>
     </div>

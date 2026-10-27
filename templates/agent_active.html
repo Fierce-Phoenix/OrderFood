@@ -2,21 +2,26 @@
 {% block title %}Active delivery - OrderFood{% endblock %}
 {% block content %}
 {% set s = d.status %}
-<p><a href="{{ url_for('delivery_agent_dashboard') }}">&larr; Dashboard</a></p>
-<h1>Active delivery</h1>
-<div class="tabs" aria-label="Delivery progress">
+<a href="{{ url_for('delivery_agent_dashboard') }}" class="back-link"><svg aria-hidden="true"><use href="#icon-arrow-left"/></svg> Dashboard</a>
+<p class="eyebrow">Active delivery</p>
+<h1>Order #{{ d.order_id }}</h1>
+{% set stage = {'accepted': 1, 'at_restaurant': 2, 'picked_up': 3, 'on_the_way': 4}.get(s, 1) %}
+<div class="progress-track" aria-label="Delivery progress">
+    {% for i in range(1, 5) %}<span class="{{ 'done' if i <= stage else '' }}"></span>{% endfor %}
+</div>
+<div class="tabs" aria-hidden="true">
     {% for key, text, reached in [('accepted','Accepted',true), ('at_restaurant','At restaurant', s in ('at_restaurant','picked_up','on_the_way')),
         ('picked_up','Picked up', s in ('picked_up','on_the_way')), ('on_the_way','On the way', s == 'on_the_way')] %}
     <span class="tab {% if s == key %}active{% endif %}">{{ text }}{{ ' (done)' if reached and s != key else '' }}</span>{% endfor %}
 </div>
-<div class="map-box">Map: <a href="{{ map_url }}" target="_blank" rel="noopener">open pickup location in OpenStreetMap</a></div>
+<div class="map-box">Map: <a href="{{ map_url }}" target="_blank" rel="noopener">open pickup location in OpenStreetMap</a> (mocked, not live navigation)</div>
 <div class="two-col">
     <div class="box"><h3>Pickup</h3><strong>{{ d.rest_name }}</strong><br>{{ d.rest_address }}<br>
         <span class="muted">{{ 'Picked up' if s in ('picked_up','on_the_way') else 'Waiting for pickup' }}</span></div>
     <div class="box"><h3>Customer</h3><strong>{{ d.customer_name or 'Customer' }}</strong><br>{{ d.delivery_address }}
         {% if d.customer_note %}<br><strong>Accessibility note:</strong> {{ d.customer_note }}{% endif %}</div>
 </div>
-<div class="box"><h3>Order #{{ d.order_id }}</h3>{{ d.summary }}<br>Already paid &middot; you earn <strong>{{ d.payout|money }}</strong>
+<div class="box"><h3>Order details</h3>{{ d.summary }}<br>Already paid &middot; you earn <strong>{{ d.payout|money }}</strong>
     &middot; about {{ d.estimated_delivery_time|int }} min</div>
 
 {% if s in ('at_restaurant',) and d.order_status != 'ready' %}
@@ -24,23 +29,25 @@
 {% endif %}
 <div class="row">
     {% if s == 'accepted' %}
-        <form method="POST" action="{{ url_for('agent_step', action='arrive') }}">{{ csrf_input() }}<button class="btn" type="submit">I am at the restaurant</button></form>
+        <form method="POST" action="{{ url_for('agent_step', action='arrive') }}">{{ csrf_input() }}<button class="btn btn-accent" type="submit">I am at the restaurant</button></form>
     {% elif s == 'at_restaurant' %}
         <form method="POST" action="{{ url_for('agent_step', action='pickup') }}">{{ csrf_input() }}
-            <button class="btn" type="submit" {% if d.order_status != 'ready' %}disabled{% endif %}>Confirm pickup</button></form>
+            <button class="btn btn-accent" type="submit" {% if d.order_status != 'ready' %}disabled{% endif %}>Confirm pickup</button></form>
     {% elif s == 'picked_up' %}
         <form method="POST" action="{{ url_for('agent_step', action='onway') }}">{{ csrf_input() }}<button class="btn btn-secondary" type="submit">I am on the way</button></form>
     {% endif %}
     {% if s in ('picked_up', 'on_the_way') %}
-        <form method="POST" action="{{ url_for('agent_step', action='delivered') }}">{{ csrf_input() }}<button class="btn" type="submit">Mark as delivered</button></form>
+        <form method="POST" action="{{ url_for('agent_step', action='delivered') }}">{{ csrf_input() }}<button class="btn btn-accent" type="submit">Mark as delivered</button></form>
     {% endif %}
 </div>
 
-<details class="box" style="margin-top:1.2rem">
-    <summary><strong>Can't complete delivery</strong></summary>
+<details class="box" style="margin-top:var(--sp-5)">
+    <summary>Can't complete delivery</summary>
     <form method="POST" action="{{ url_for('agent_fail') }}">{{ csrf_input() }}
-        <p>Why can't the delivery be completed?</p>
-        {% for r in reasons %}<label style="font-weight:400"><input type="radio" name="reason" value="{{ r }}" required> {{ r }}</label>{% endfor %}
+        <p class="muted small">Why can't the delivery be completed?</p>
+        <div class="fail-reasons">
+            {% for r in reasons %}<label><input type="radio" name="reason" value="{{ r }}" required> {{ r }}</label>{% endfor %}
+        </div>
         <label for="details">Details (optional)</label><input type="text" id="details" name="details" maxlength="200">
         <p class="small muted">This order won't be marked as delivered, and the customer is refunded.</p>
         <button class="btn btn-danger" type="submit">Report problem</button>

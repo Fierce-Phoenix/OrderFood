@@ -1,11 +1,11 @@
 {% extends "layout.html" %}
 {% block title %}Your cart - OrderFood{% endblock %}
 {% block content %}
-<h1>Your cart</h1>
+<div class="page-head"><div><p class="eyebrow">Your cart</p><h1>Review before you pay</h1></div></div>
 {% if groups %}
-<p class="muted">Each restaurant is a separate order with its own payment.</p>
+<p class="muted" style="margin-bottom:var(--sp-5)">Each restaurant below is a <strong>separate order with its own payment</strong> &mdash; nothing is combined into one transaction.</p>
 {% for grp in groups %}
-<section class="box" aria-label="Order from {{ grp.name }}">
+<section class="box cart-group" aria-label="Order from {{ grp.name }}">
     <h3>{{ grp.name }} <span class="muted small">({{ grp.minutes }} min)</span></h3>
     {% for p in grp.problems %}<div class="notice" role="alert">{{ p }}</div>{% endfor %}
     {% for it in grp['items'] %}
@@ -46,8 +46,8 @@
 <div class="total-bar"><span>Total: {{ total|money }}</span>
     <span class="row"><a class="btn btn-secondary" href="{{ url_for('home') }}">Add more</a>
     {% if blocked %}<button class="btn" disabled>Checkout</button>
-    {% else %}<a class="btn" href="{{ url_for('checkout_review') }}">Checkout</a>{% endif %}</span></div>
+    {% else %}<a class="btn btn-accent" href="{{ url_for('checkout_review') }}">Checkout</a>{% endif %}</span></div>
 {% else %}
-<p>Your cart is empty. <a href="{{ url_for('home') }}">Go find some food!</a></p>
+<p class="empty-state"><svg><use href="#icon-cart"/></svg><br>Your cart is empty. <a href="{{ url_for('home') }}">Go find some food!</a></p>
 {% endif %}
 {% endblock %}

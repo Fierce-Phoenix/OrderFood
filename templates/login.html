@@ -1,17 +1,49 @@
 {% extends "layout.html" %}
 {% block title %}Log in - OrderFood{% endblock %}
-{% block content %}
-<div class="box narrow">
-    <h1>Log in</h1>
-    <form method="POST">
-        {{ csrf_input() }}
-        <label for="email">Email</label>
-        <input type="email" name="email" id="email" required autocomplete="username">
-        <label for="password">Password</label>
-        <input type="password" name="password" id="password" required autocomplete="current-password">
-        <p><button class="btn btn-block" type="submit">Log in</button></p>
-    </form>
-    <p class="small muted">No account? <a href="{{ url_for('register') }}">Register here</a></p>
-    <p class="small muted">Demo: customer@test.com / password123, admin@test.com / admin123, agent@test.com / agent123</p>
+{% block extra_head %}
+<style>body { background: var(--c-bg); }</style>
+{% endblock %}
+{% block body %}
+<div class="auth-shell">
+    <section class="auth-hero" aria-hidden="true">
+        <div class="hero-fallback"></div>
+        <canvas id="hero-canvas"></canvas>
+        <div class="hero-copy">
+            <p class="eyebrow">Three stakeholders. One honest platform.</p>
+            <h1>Food delivery, without the 30% cut.</h1>
+            <p>Customers order from any restaurant within 30 minutes. Restaurants keep what they earn. Delivery agents
+               choose how they get paid, and which deliveries to take.</p>
+            <div class="hero-stats">
+                <div><strong>0%</strong><span>Hidden commission</span></div>
+                <div><strong>3</strong><span>Connected dashboards</span></div>
+                <div><strong>30 min</strong><span>Delivery radius</span></div>
+            </div>
+        </div>
+    </section>
+    <section class="auth-panel">
+        <div class="auth-card">
+            <p class="eyebrow">Welcome back</p>
+            <h1>Log in</h1>
+            <form method="POST">
+                {{ csrf_input() }}
+                <label for="email">Email</label>
+                <input type="email" name="email" id="email" required autocomplete="username">
+                <label for="password">Password</label>
+                <input type="password" name="password" id="password" required autocomplete="current-password">
+                <p><button class="btn btn-accent btn-block" type="submit">Log in</button></p>
+            </form>
+            <p class="small muted">No account? <a href="{{ url_for('register') }}">Register here</a></p>
+            <p class="small muted" style="margin-bottom:.4rem">Try a demo account:</p>
+            <div class="demo-row">
+                <button type="button" class="btn btn-secondary btn-small" onclick="ofFillDemo('customer@test.com','password123')">Customer</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="ofFillDemo('admin@test.com','admin123')">Restaurant owner</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="ofFillDemo('agent@test.com','agent123')">Delivery agent</button>
+            </div>
+        </div>
+    </section>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script src="{{ url_for('static', filename='hero3d.js') }}"></script>
 {% endblock %}

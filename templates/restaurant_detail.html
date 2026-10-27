@@ -1,9 +1,20 @@
 {% extends "layout.html" %}
 {% block title %}{{ restaurant.name }} - OrderFood{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('home') }}">&larr; Back to restaurants</a></p>
-<h1>{{ restaurant.name }}</h1>
-<p class="muted">{{ restaurant.address }} &middot; rated {{ restaurant.rating }}</p>
+{% set style = restaurant_style(restaurant.name) %}
+<a href="{{ url_for('home') }}" class="back-link"><svg aria-hidden="true"><use href="#icon-arrow-left"/></svg> Back to restaurants</a>
+
+<div class="r-banner">
+    <div class="tone tone-{{ style.tone }}" {% if style.photo_url %}style="display:none"{% endif %}>
+        <svg aria-hidden="true"><use href="#icon-{{ style.icon }}"/></svg>
+    </div>
+    {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" onerror="ofImgFallback(this)">{% endif %}
+    <div class="r-banner-copy">
+        <p class="eyebrow" style="color:#E6E0CC">{{ style.cuisine }}</p>
+        <h1>{{ restaurant.name }}</h1>
+        <p class="muted">{{ restaurant.address }} &middot; rated {{ restaurant.rating }}</p>
+    </div>
+</div>
 
 {% if too_far %}
 <div class="notice" role="status"><strong>Too far to deliver.</strong>
@@ -11,19 +22,34 @@
 {% elif not restaurant.is_open %}
 <div class="notice" role="status"><strong>Closed right now.</strong> You can read the menu but cannot order.</div>
 {% else %}
-<div class="box" role="status">Estimated delivery: <strong>{{ delivery_time }} minutes</strong></div>
+<div class="box row between" role="status" style="align-items:center">
+    <span>Estimated delivery: <strong>{{ delivery_time }} minutes</strong></span>
+    <span class="pill pill-ready">Open now</span>
+</div>
 {% endif %}
 
-<h2>Menu{% if too_far %} (view only){% endif %}</h2>
-{% set ns = namespace(cat='') %}
+{% set ns = namespace(cats=[]) %}
+{% for item in menu_items %}{% if item.category not in ns.cats %}{% set ns.cats = ns.cats + [item.category] %}{% endif %}{% endfor %}
+{% if ns.cats|length > 1 %}
+<nav class="category-nav" aria-label="Menu categories">
+    {% for c in ns.cats %}<a href="#cat-{{ loop.index }}">{{ c }}</a>{% endfor %}
+</nav>
+{% endif %}
+
+<h2 class="visually-hidden">Menu{% if too_far %} (view only){% endif %}</h2>
+{% set ns2 = namespace(cat='', idx=0) %}
 {% for item in menu_items %}
-    {% if item.category != ns.cat %}{% set ns.cat = item.category %}<h3 class="category">{{ item.category }}</h3>{% endif %}
+    {% if item.category != ns2.cat %}{% set ns2.cat = item.category %}{% set ns2.idx = ns2.idx + 1 %}
+        <h3 class="category" id="cat-{{ ns2.idx }}">{{ item.category }}</h3>
+    {% endif %}
     {% set qty = cart.get(item.id|string, 0) %}
     <div class="menu-item {% if not item.is_available %}sold-out{% endif %}">
         <div>
-            <h3>{{ item.name }}</h3>
-            <span class="muted">{{ item.price|money }}{% if not item.is_available %} &middot; Sold out{% endif %}</span>
+            <p class="item-name">{{ item.name }}</p>
+            {% if item.description %}<p class="item-desc">{{ item.description }}</p>{% endif %}
+            <span class="price">{{ item.price|money }}</span>{% if not item.is_available %} <span class="muted small">&middot; Sold out</span>{% endif %}
         </div>
+        <div class="actions">
         {% if not too_far and restaurant.is_open and item.is_available %}
             {% if qty %}
             <div class="stepper" role="group" aria-label="Quantity of {{ item.name }}">
@@ -45,11 +71,14 @@
             </form>
             {% endif %}
         {% endif %}
+        </div>
     </div>
 {% endfor %}
 
 {% if cart_count and not too_far %}
-<div class="total-bar"><span>Cart: {{ cart_count }} item{{ '' if cart_count == 1 else 's' }}</span>
-    <a class="btn" href="{{ url_for('view_cart') }}">View cart</a></div>
+<div class="cart-flyout">
+    <div class="total-bar"><span>Cart: {{ cart_count }} item{{ '' if cart_count == 1 else 's' }}</span>
+        <a class="btn btn-accent" href="{{ url_for('view_cart') }}">View cart</a></div>
+</div>
 {% endif %}
 {% endblock %}
