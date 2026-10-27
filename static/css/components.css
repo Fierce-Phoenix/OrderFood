@@ -1,0 +1,157 @@
+/* Shared components: nav, buttons, forms, cards, feedback, tabs, timeline. */
+
+/* --- Top navigation --------------------------------------------------- */
+.topbar { background: var(--c-forest); color: #F4F1E7; padding: .9rem var(--sp-5); display: flex;
+    justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--sp-3); }
+body.high-contrast .topbar { border-bottom: 2px solid var(--c-focus); }
+.logo { font-family: var(--font-display); font-weight: 600; font-size: 1.5rem; letter-spacing: -.01em; color: #fff;
+    text-decoration: none; display: flex; align-items: center; gap: .5rem; }
+.logo svg { width: 22px; height: 22px; }
+body.high-contrast .logo { color: var(--c-focus); }
+.nav { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; font-size: var(--size-sm); }
+.nav a { color: #E7E2D1; text-decoration: none; font-weight: 500; padding: .3rem 0; border-bottom: 1px solid transparent;
+    transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.nav a:hover, .nav a:focus-visible { color: #fff; border-color: var(--c-accent); }
+body.high-contrast .nav a { color: var(--c-focus); }
+.wallet-info { background: rgba(255,255,255,.1); padding: .35rem .85rem; border-radius: var(--radius-full);
+    font-variant-numeric: tabular-nums; font-weight: 600; font-size: var(--size-sm); }
+.who { opacity: .7; font-size: var(--size-xs); }
+.badge { background: var(--c-accent); color: #fff; border-radius: var(--radius-full); padding: 0 .5rem; font-size: .75rem; font-weight: 700; }
+
+/* --- Flash / toast feedback --------------------------------------------- */
+.flash-stack { position: fixed; top: 6.8rem; right: var(--sp-5); z-index: 2000; display: flex; flex-direction: column;
+    gap: .5rem; max-width: min(360px, calc(100vw - 2rem)); }
+.flash { background: var(--c-surface); border: 1px solid var(--c-line); border-left: 4px solid var(--c-ink-faint);
+    border-radius: var(--radius-md); padding: .75rem 1rem; box-shadow: var(--shadow-md); font-size: var(--size-sm);
+    display: flex; align-items: flex-start; gap: .55rem; animation: toast-in var(--dur-base) var(--ease-out); }
+.flash svg { flex: none; width: 18px; height: 18px; margin-top: .1rem; }
+.flash-error { border-left-color: var(--c-danger); color: var(--c-danger); }
+.flash-success { border-left-color: var(--c-success); color: var(--c-success); }
+.flash-warning { border-left-color: var(--c-warning); color: var(--c-warning); }
+.flash.leaving { animation: toast-out var(--dur-base) var(--ease) forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(12px); } }
+body.high-contrast .flash { background: #000; border: 2px solid var(--c-focus); color: var(--c-focus); }
+@media (max-width: 600px) { .flash-stack { left: var(--sp-4); right: var(--sp-4); top: auto; bottom: var(--sp-4); max-width: none; } }
+
+.notice { background: var(--c-warning-tint); border: 1px solid var(--c-warning); color: #5E4712; padding: var(--sp-4);
+    border-radius: var(--radius-md); margin-bottom: var(--sp-4); }
+.notice strong { color: inherit; }
+body.high-contrast .notice { background: #000; border: 2px solid var(--c-focus); color: var(--c-focus); }
+
+/* --- Buttons ------------------------------------------------------------ */
+.btn, button.btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; background: var(--c-ink);
+    color: #fff; padding: .65rem 1.3rem; text-decoration: none; border-radius: var(--radius-sm); font-weight: 600;
+    border: 1px solid var(--c-ink); cursor: pointer; font-size: var(--size-sm); font-family: var(--font-body);
+    transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.btn:hover { background: #000; border-color: #000; }
+.btn:active { transform: translateY(1px); }
+.btn.is-pressed { transform: scale(.97); }
+.btn-accent, button.btn-accent { background: var(--c-accent); border-color: var(--c-accent); }
+.btn-accent:hover { background: var(--c-accent-dark); border-color: var(--c-accent-dark); }
+.btn-secondary { background: var(--c-surface); color: var(--c-ink); border-color: var(--c-line-strong); }
+.btn-secondary:hover { background: var(--c-surface-2); }
+.btn-danger { background: var(--c-surface); color: var(--c-danger); border-color: var(--c-danger); }
+.btn-danger:hover { background: var(--c-danger-tint); }
+.btn-small { padding: .4rem .85rem; font-size: var(--size-xs); }
+.btn:disabled, button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn-block { display: flex; width: 100%; padding: .85rem; font-size: var(--size-base); }
+body.high-contrast .btn, body.high-contrast button { background: #000; border: 2px solid var(--c-focus); color: var(--c-focus); }
+
+.row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+.row.between { justify-content: space-between; }
+form.inline { display: inline; }
+
+/* --- Forms --------------------------------------------------------------- */
+label { display: block; font-weight: 600; font-size: var(--size-sm); margin: var(--sp-4) 0 var(--sp-1); }
+input[type=text], input[type=email], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: .65rem .75rem; border: 1px solid var(--c-line-strong); border-radius: var(--radius-sm);
+    font: inherit; background: var(--c-surface); color: var(--c-ink); transition: border-color var(--dur-fast) var(--ease); }
+input:focus, select:focus, textarea:focus { border-color: var(--c-accent); }
+input.short { width: 7rem; }
+.field-inline { display: flex; gap: var(--sp-3); align-items: flex-end; flex-wrap: wrap; }
+.field-inline > * { flex: 1 1 160px; }
+.field-inline > label { margin-top: 0; }
+.field-help { margin: .25rem 0 0; }
+
+/* Segmented control, used for payment method / role toggles */
+.segmented { display: inline-flex; border: 1px solid var(--c-line-strong); border-radius: var(--radius-full); padding: 3px; gap: 2px; }
+.segmented button { border: none; background: transparent; padding: .45rem 1rem; border-radius: var(--radius-full);
+    font-size: var(--size-sm); font-weight: 600; cursor: pointer; color: var(--c-ink-soft); }
+.segmented button[aria-pressed="true"] { background: var(--c-forest); color: #fff; }
+
+/* --- Cards / boxes -------------------------------------------------------- */
+.box { background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius-lg); padding: var(--sp-5); margin-bottom: var(--sp-4); }
+.box h3 { margin-bottom: var(--sp-2); }
+body.high-contrast .box, body.high-contrast .notice { background: #000; border: 2px solid var(--c-focus); color: var(--c-focus); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-5); }
+
+/* --- Stepper (quantity) --------------------------------------------------- */
+.stepper { display: inline-flex; align-items: center; gap: .6rem; }
+.stepper button { width: 2rem; height: 2rem; border-radius: 50%; border: 1px solid var(--c-line-strong); background: var(--c-surface);
+    font-size: 1.1rem; line-height: 1; cursor: pointer; color: var(--c-ink); transition: background var(--dur-fast) var(--ease); }
+.stepper button:hover { background: var(--c-surface-2); border-color: var(--c-accent); }
+.stepper .qty { min-width: 1.4rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* --- Table ----------------------------------------------------------------- */
+table { width: 100%; border-collapse: collapse; background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--radius-md); overflow: hidden; }
+th, td { padding: .75rem .9rem; text-align: left; border-bottom: 1px solid var(--c-line); vertical-align: top; font-size: var(--size-sm); }
+th { background: var(--c-forest); color: #fff; font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+body.high-contrast th { background: #000; color: var(--c-focus); border-bottom: 2px solid var(--c-focus); }
+.table-wrap { overflow-x: auto; border-radius: var(--radius-md); }
+
+/* --- Status pills ------------------------------------------------------------ */
+.pill { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .7rem; border-radius: var(--radius-full);
+    font-size: var(--size-xs); font-weight: 700; background: var(--c-surface-2); color: var(--c-ink-soft); border: 1px solid var(--c-line); }
+.pill-pending, .pill-preparing, .pill-ready, .pill-out_for_delivery, .pill-accepted, .pill-at_restaurant, .pill-picked_up, .pill-on_the_way {
+    background: var(--c-warning-tint); color: #6B4F0F; border-color: #E4CD8E; }
+.pill-delivered, .pill-completed { background: var(--c-success-tint); color: var(--c-success); border-color: #BFDBC6; }
+.pill-rejected, .pill-cancelled, .pill-delivery_failed, .pill-failed, .pill-disputed, .pill-restaurant_fallback {
+    background: var(--c-danger-tint); color: var(--c-danger); border-color: #E3B9AC; }
+body.high-contrast .pill { background: #000; border: 1px solid var(--c-focus); color: var(--c-focus); }
+
+/* --- Tabs ---------------------------------------------------------------------- */
+.tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: var(--sp-4); overflow-x: auto; }
+.tab { padding: .55rem 1.1rem; border: 1px solid var(--c-line-strong); border-radius: var(--radius-full); text-decoration: none;
+    color: var(--c-ink); background: var(--c-surface); font-weight: 600; font-size: var(--size-sm); white-space: nowrap;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.tab:hover { background: var(--c-surface-2); }
+.tab.active { background: var(--c-forest); color: #fff; border-color: var(--c-forest); }
+body.high-contrast .tab { background: #000; color: var(--c-focus); border: 2px solid var(--c-focus); }
+
+/* --- Order timeline -------------------------------------------------------------- */
+.timeline { list-style: none; padding: 0; margin: var(--sp-5) 0; display: flex; flex-direction: column; gap: 0; }
+.timeline li { position: relative; padding: 0 0 var(--sp-5) 2.4rem; color: var(--c-ink-faint); }
+.timeline li::before { content: ""; position: absolute; left: .35rem; top: .15rem; width: .95rem; height: .95rem; border-radius: 50%;
+    border: 2px solid var(--c-line-strong); background: var(--c-surface); z-index: 1; transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
+.timeline li::after { content: ""; position: absolute; left: .78rem; top: 1rem; bottom: -.2rem; width: 2px; background: var(--c-line); }
+.timeline li:last-child::after { display: none; }
+.timeline li.done { color: var(--c-ink); font-weight: 600; }
+.timeline li.done::before { background: var(--c-accent); border-color: var(--c-accent); }
+.timeline li.done::after { background: var(--c-accent); }
+.timeline li .state { font-weight: 400; font-size: var(--size-xs); margin-left: .5rem; color: var(--c-ink-faint); }
+body.high-contrast .timeline li::before { background: #000; }
+body.high-contrast .timeline li.done::before { background: var(--c-focus); }
+
+/* --- Empty / error states ------------------------------------------------------------- */
+.empty-state { text-align: center; padding: var(--sp-8) var(--sp-5); color: var(--c-ink-soft); }
+.empty-state svg { width: 48px; height: 48px; margin: 0 auto var(--sp-3); opacity: .5; }
+.error-page { text-align: center; padding: var(--sp-8) var(--sp-4); }
+.error-page .code { font-family: var(--font-display); font-size: 4.5rem; font-weight: 600; color: var(--c-accent); }
+
+/* --- Disclosure (details/summary used for "can't complete delivery") ---------------------------- */
+details.box summary { cursor: pointer; font-weight: 700; list-style: none; display: flex; align-items: center; gap: .4rem; }
+details.box summary::before { content: "+"; font-family: var(--font-display); font-size: 1.1rem; color: var(--c-accent); }
+details.box[open] summary::before { content: "\2212"; }
+details.box[open] summary { margin-bottom: var(--sp-3); }
+
+/* --- Reveal-on-scroll (progressive enhancement, no-op without JS) ----------------------------------- */
+.reveal { opacity: 0; transform: translateY(14px); transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
+.reveal.in-view { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; } }
+
+@media (max-width: 760px) {
+    .flash-stack { top: .7rem; }
+}
