@@ -2,29 +2,49 @@
 {% block title %}{{ restaurant.name }} - OrderFood{% endblock %}
 {% block content %}
 {% set style = restaurant_style(restaurant.name) %}
+<<<<<<< HEAD
 <a href="{{ url_for('home') }}" class="back-link">Back to restaurants</a>
 
 <div class="r-banner">
     <div class="tone tone-{{ style.tone }}" {% if style.photo_url %}style="display:none"{% endif %}>
+=======
+<a href="{{ url_for('home') }}" class="back-link"><svg aria-hidden="true"><use href="#icon-arrow-left"/></svg> Back to restaurants</a>
+
+<div class="r-banner">
+    <div class="tone tone-{{ style.tone }}" {% if style.photo_url %}style="display:none"{% endif %}>
+        <svg aria-hidden="true"><use href="#icon-{{ style.icon }}"/></svg>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     </div>
     {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" onerror="ofImgFallback(this)">{% endif %}
     <div class="r-banner-copy">
         <p class="eyebrow" style="color:#E6E0CC">{{ style.cuisine }}</p>
         <h1>{{ restaurant.name }}</h1>
+<<<<<<< HEAD
         <p class="muted">{{ restaurant.address }} &middot;
             {% if review_count %}{{ '%.1f'|format(feedback_rating) }} from {{ review_count }} reviews
             {% else %}No customer ratings yet{% endif %}</p>
+=======
+        <p class="muted">{{ restaurant.address }} &middot; rated {{ restaurant.rating }}</p>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     </div>
 </div>
 
 {% if too_far %}
 <div class="notice" role="status"><strong>Too far to deliver.</strong>
+<<<<<<< HEAD
     {{ restaurant.name }} is {% if delivery_time >= 120 %}far away{% else %}about {{ delivery_time }} min away{% endif %}{% if distance_km %} ({{ distance_km }} km){% endif %} and we only deliver within 30 min. The menu is view only.</div>
+=======
+    {{ restaurant.name }} is about {{ delivery_time }} min away and we only deliver within 30 min. The menu is view only.</div>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 {% elif not restaurant.is_open %}
 <div class="notice" role="status"><strong>Closed right now.</strong> You can read the menu but cannot order.</div>
 {% else %}
 <div class="box row between" role="status" style="align-items:center">
+<<<<<<< HEAD
     <span>Estimated delivery: <strong>{{ delivery_time }} minutes</strong>{% if distance_km %} &middot; {{ distance_km }} km away{% endif %}</span>
+=======
+    <span>Estimated delivery: <strong>{{ delivery_time }} minutes</strong></span>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     <span class="pill pill-ready">Open now</span>
 </div>
 {% endif %}
@@ -76,6 +96,7 @@
     </div>
 {% endfor %}
 
+<<<<<<< HEAD
 <section class="section-head" id="feedback"><h2>Customer feedback</h2></section>
 {% for review in reviews %}
 <article class="box">
@@ -86,6 +107,8 @@
 </article>
 {% else %}<p class="empty-state">No customer feedback yet.</p>{% endfor %}
 
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 {% if cart_count and not too_far %}
 <div class="cart-flyout">
     <div class="total-bar"><span>Cart: {{ cart_count }} item{{ '' if cart_count == 1 else 's' }}</span>

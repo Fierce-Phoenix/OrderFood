@@ -4,12 +4,17 @@
 <div class="container-narrow" style="max-width:640px">
 <p class="eyebrow">Checkout</p>
 <h1>Payment</h1>
+<<<<<<< HEAD
 <form method="POST" action="{{ url_for('checkout') }}" id="checkout-form"
       data-create-url="{{ url_for('api_create_order') }}"
       data-verify-url="{{ url_for('api_verify_payment') }}"
       data-cancel-url="{{ url_for('api_cancel_order') }}"
       data-key-id="{{ razorpay_key_id }}" data-email="{{ customer_email }}"
       data-pending-order-id="{{ pending_razorpay_order_id }}">
+=======
+<span class="sim-label"><svg style="width:14px;height:14px"><use href="#icon-mark"/></svg> Simulated OrderFood wallet &mdash; no real money moves</span>
+<form method="POST" action="{{ url_for('checkout') }}">
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     {{ csrf_input() }}
     <input type="hidden" name="token" value="{{ token }}">
     <div class="box">
@@ -34,6 +39,7 @@
     </div>
     <div class="row between">
         <a class="btn btn-secondary" href="{{ url_for('view_cart') }}">Back to cart</a>
+<<<<<<< HEAD
         <button class="btn btn-secondary" type="submit">Pay {{ total|money }} from wallet</button>
         {% if razorpay_key_id %}
         <button class="btn btn-accent" type="button" id="razorpay-pay">Pay {{ total|money }} with Razorpay</button>
@@ -54,3 +60,10 @@
 <script src="{{ url_for('static', filename='razorpay_checkout.js') }}" defer></script>
 {% endif %}
 {% endblock %}
+=======
+        <button class="btn btn-accent" type="submit">Pay {{ total|money }}</button>
+    </div>
+</form>
+</div>
+{% endblock %}
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5

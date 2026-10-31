@@ -17,20 +17,36 @@
 {% endfor %}
 
 <div class="discovery-head">
+<<<<<<< HEAD
     <h1>Restaurants near you</h1>
     <p>Browse menus, compare delivery times and place an order.</p>
+=======
+    <p class="eyebrow">Mumbai &middot; delivering within 30 minutes</p>
+    <h1>What are you hungry for?</h1>
+    <p>Every restaurant here keeps what it earns. Browse, build a cart from more than one kitchen, and pay each one separately.</p>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 </div>
 
 <form method="GET" class="search-row" role="search">
     <div class="search-field">
+<<<<<<< HEAD
         <label for="q" class="visually-hidden">Search restaurants and food</label>
         <input type="text" id="q" name="q" value="{{ q }}" placeholder="Search restaurants and dishes...">
+=======
+        <svg aria-hidden="true"><use href="#icon-search"/></svg>
+        <label for="q" class="visually-hidden">Search restaurants</label>
+        <input type="text" id="q" name="q" value="{{ q }}" placeholder="Search biryani, salads, pizza...">
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     </div>
     <button class="btn" type="submit">Search</button>
 </form>
 
 {% set ns = namespace(cuisines=[]) %}
+<<<<<<< HEAD
 {% for rest, time, km in reachable %}
+=======
+{% for rest, time in reachable %}
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     {% set style = restaurant_style(rest.name) %}
     {% if style.cuisine not in ns.cuisines %}{% set ns.cuisines = ns.cuisines + [style.cuisine] %}{% endif %}
 {% endfor %}
@@ -50,6 +66,7 @@
 </div>
 {% endif %}
 
+<<<<<<< HEAD
 <div class="section-head"><h2>Available restaurants</h2></div>
 <div class="grid" data-discovery>
     {% for rest, time, km in reachable %}
@@ -62,12 +79,28 @@
             {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" loading="lazy" onerror="ofImgFallback(this)">{% endif %}
             <div class="badge-row">
                 <span class="time-badge">{{ time }} min{% if km %} &middot; {{ km }} km{% endif %}</span>
+=======
+<div class="section-head"><h2>Delivers to you in 30 minutes</h2></div>
+<div class="grid" data-discovery>
+    {% for rest, time in reachable %}
+    {% set style = restaurant_style(rest.name) %}
+    <article class="r-card reveal" data-cuisine="{{ style.cuisine }}" data-open="{{ 1 if rest.is_open else 0 }}"
+             data-minutes="{{ time }}" data-rating="{{ rest.rating }}" data-order="{{ loop.index }}">
+        <div class="media">
+            <div class="tone tone-{{ style.tone }}" {% if style.photo_url %}style="display:none"{% endif %}>
+                <svg aria-hidden="true"><use href="#icon-{{ style.icon }}"/></svg>
+            </div>
+            {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" loading="lazy" onerror="ofImgFallback(this)">{% endif %}
+            <div class="badge-row">
+                <span class="time-badge">{{ time }} min</span>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
                 {% if not rest.is_open %}<span class="closed-badge">Closed now</span>{% endif %}
             </div>
         </div>
         <div class="body">
             <h3>{{ rest.name }}</h3>
             <p class="cuisine">{{ style.cuisine }}</p>
+<<<<<<< HEAD
             <p class="restaurant-address">{{ rest.address }}</p>
             {% if rest.matched_items %}<p class="search-matches"><strong>Matching dishes:</strong> {{ rest.matched_items }}</p>{% endif %}
             <div class="meta-row">
@@ -75,6 +108,10 @@
                     {% if rest.review_count %}{{ '%.1f'|format(rest.feedback_rating) }} ({{ rest.review_count }} reviews)
                     {% else %}No ratings yet{% endif %}
                 </span>
+=======
+            <div class="meta-row">
+                <span class="rating"><svg aria-hidden="true"><use href="#icon-star"/></svg> {{ rest.rating }}</span>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
                 <span>&middot;</span>
                 <span>{{ rest.description }}</span>
             </div>
@@ -84,10 +121,18 @@
     {% endfor %}
 </div>
 <p class="empty-state" data-discovery-empty hidden>
+<<<<<<< HEAD
+=======
+    <svg><use href="#icon-empty"/></svg>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     No restaurants match these filters right now.
 </p>
 {% if not reachable %}
 <p class="empty-state">
+<<<<<<< HEAD
+=======
+    <svg><use href="#icon-empty"/></svg>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     No restaurants match your search within 30 minutes.
 </p>
 {% endif %}
@@ -95,14 +140,25 @@
 {% if too_far %}
 <div class="section-head"><h2>Over 30 minutes away</h2><span class="muted small">View only &mdash; can't order</span></div>
 <div class="grid">
+<<<<<<< HEAD
     {% for rest, time, km in too_far %}
+=======
+    {% for rest, time in too_far %}
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     {% set style = restaurant_style(rest.name) %}
     <article class="r-card too-far reveal">
         <div class="media">
             <div class="tone tone-{{ style.tone }}" {% if style.photo_url %}style="display:none"{% endif %}>
+<<<<<<< HEAD
             </div>
             {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" loading="lazy" onerror="ofImgFallback(this)">{% endif %}
             <div class="badge-row"><span class="time-badge">{% if time >= 120 %}Far away{% else %}{{ time }} min away{% endif %}{% if km %} &middot; {{ km }} km{% endif %}</span></div>
+=======
+                <svg aria-hidden="true"><use href="#icon-{{ style.icon }}"/></svg>
+            </div>
+            {% if style.photo_url %}<img src="{{ style.photo_url }}" alt="" loading="lazy" onerror="ofImgFallback(this)">{% endif %}
+            <div class="badge-row"><span class="time-badge">{{ time }} min away</span></div>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         </div>
         <div class="body">
             <h3>{{ rest.name }}</h3>

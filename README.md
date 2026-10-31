@@ -6,6 +6,7 @@ A premium food delivery platform built with Flask and SQLite, designed to provid
 
 OrderFood is an open portal that removes the heavy commissions typically charged by delivery platforms. It empowers stakeholders with dedicated dashboards:
 
+<<<<<<< HEAD
 - **Customers**: Browse restaurants within a 30-minute delivery radius, order from multiple restaurants in a single cart, pay via an in-app wallet or Razorpay Standard Checkout, and track delivery status in real-time.
 - **Restaurants**: Manage menus and availability, accept or reject orders, configure a Razorpay payout account, and choose between requesting a delivery agent or self-delivering.
 - **Delivery Agents**: Receive exclusive delivery offers ranked by pickup distance or payout cost, configure a Razorpay payout account, and choose their compensation method.
@@ -18,6 +19,18 @@ OrderFood is an open portal that removes the heavy commissions typically charged
 - **Proximity Enforcement**: A server-side 30-minute delivery rule ensures customers only order from reachable restaurants.
 - **Order Lifecycle**: Full tracking from "Pending" to "Delivered," including a confirmation gate before customers can place new orders.
 - **Verified Feedback**: Customers can review a restaurant only after confirming a completed order. Restaurants receive an in-app notification and ratings are calculated from submitted reviews.
+=======
+- **Customers**: Browse restaurants within a 30-minute delivery radius, order from multiple restaurants in a single cart, pay via an in-app wallet, and track delivery status in real-time.
+- **Restaurants**: Manage menus and availability, accept or reject orders, and choose between requesting a delivery agent or self-delivering.
+- **Delivery Agents**: Browse open delivery requests, select preferred orders, and choose their own compensation method (per order, per km, or per minute).
+
+## Features
+
+- **Multi-Restaurant Cart**: Add items from various restaurants with quantity controls and sold-out detection.
+- **Transparent Payments**: Separate transactions per restaurant with a simulated wallet system and partial failure recovery.
+- **Proximity Enforcement**: A server-side 30-minute delivery rule ensures customers only order from reachable restaurants.
+- **Order Lifecycle**: Full tracking from "Pending" to "Delivered," including a confirmation gate before customers can place new orders.
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 - **Comprehensive Dashboards**: 
     - **Restaurant**: Kanban-style order queue (New $\rightarrow$ Preparing $\rightarrow$ Ready $\rightarrow$ History), menu management, and revenue tracking.
     - **Agent**: Flexible payout options, request management, and earnings tracking.
@@ -34,6 +47,7 @@ pip install -r requirements.txt
 ```bash
 python orderfood_app.py
 ```
+<<<<<<< HEAD
 The app will be available at `http://127.0.0.1:9000`. A fresh local database is created
 automatically on first run; the SQLite database and generated development signing key are local
 state and should not be committed or shared.
@@ -120,10 +134,31 @@ A browser key is visible to anyone who opens the page, so restrict it in Cloud C
 ## User Walkthrough
 
 1. **Customer**: Register or log in, add items from multiple restaurants, proceed to checkout, and pay using the wallet or Razorpay.
+=======
+The app will be available at `http://127.0.0.1:9000`.
+
+### Running Tests
+```bash
+python -m unittest -v test_app
+```
+
+## Demo Accounts
+
+| Role | Email | Password |
+|---|---|---|
+| Customer | customer@test.com | password123 |
+| Restaurant (The Burger Joint) | admin@test.com | admin123 |
+| Delivery agent | agent@test.com | agent123 |
+
+## User Walkthrough
+
+1. **Customer**: Add items from multiple restaurants, proceed to checkout, and pay using the simulated wallet.
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 2. **Restaurant**: Accept the order, prepare the food, and either mark it as "Ready" for an agent or choose "Self-deliver."
 3. **Agent**: Select a payment method, accept the delivery request, confirm pickup once the restaurant marks the order as ready, and finally mark the order as delivered.
 4. **Customer**: Confirm receipt of the order to clear the delivery gate and enable future ordering.
 
+<<<<<<< HEAD
 *Note: The app includes seed data for local development. Create production accounts through the registration flow and do not reuse development credentials.*
 
 
@@ -139,3 +174,6 @@ See [TESTING.md](TESTING.md) for the full application and Razorpay test-harness 
 ## Design
 
 See [DESIGN_NOTES.md](DESIGN_NOTES.md) for the visual direction and design decisions.
+=======
+*Note: For a full end-to-end demo, use "The Burger Joint" as it has a pre-configured owner account.*
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5

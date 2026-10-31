@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}Delivery request - OrderFood{% endblock %}
+<<<<<<< HEAD
 {% block extra_head %}
 {% include "_maps_head.html" %}
 <script src="{{ url_for('static', filename='tracking.js') }}" defer></script>
@@ -7,16 +8,28 @@
 {% block content %}
 {% if not req %}
 <div class="error-page">
+=======
+{% block content %}
+{% if not req %}
+<div class="error-page"><svg class="illo" aria-hidden="true"><use href="#icon-broken"/></svg>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     <h1>Sorry, this request is gone</h1>
     <p>Another agent got to it first, or it is no longer available.</p>
     <a class="btn btn-accent" href="{{ url_for('delivery_agent_dashboard') }}">Back to requests</a></div>
 {% else %}
+<<<<<<< HEAD
 <a href="{{ url_for('delivery_agent_dashboard') }}" class="back-link">Back</a>
 <p class="eyebrow">Delivery request</p>
 <h1>{{ req.rest_name }} &rarr; {{ req.delivery_address }}</h1>
 {% if preview %}{% set panel_role = 'agent' %}{% set panel_api = none %}{% set panel_static = preview %}{% set panel_rest = req.rest_name ~ ' - ' ~ req.rest_address %}{% set panel_dest = req.delivery_address %}
 {% include "_track_panel.html" %}
 <p class="muted small">Solid line: you &rarr; restaurant{% if preview.pickup_km %} ({{ preview.pickup_km }} km, ~{{ preview.pickup_min }} min){% endif %}. Dashed: restaurant &rarr; customer.</p>{% endif %}
+=======
+<a href="{{ url_for('delivery_agent_dashboard') }}" class="back-link"><svg aria-hidden="true"><use href="#icon-arrow-left"/></svg> Back</a>
+<p class="eyebrow">Delivery request</p>
+<h1>{{ req.rest_name }} &rarr; {{ req.delivery_address }}</h1>
+<div class="map-box">Map: <a href="{{ map_url }}" target="_blank" rel="noopener">open pickup location in OpenStreetMap</a> (mocked, not live navigation)</div>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 <div class="two-col">
     <div class="box"><h3>Pickup</h3><strong>{{ req.rest_name }}</strong><br>{{ req.rest_address }}</div>
     <div class="box"><h3>Drop</h3><strong>{{ req.delivery_address }}</strong>
@@ -25,7 +38,11 @@
     <div class="box"><h3>Expected payment</h3><div class="payout">{{ payout|money }}</div>
         <span class="muted small">{{ PAY_LABELS[agent.payment_method] }}</span></div>
 </div>
+<<<<<<< HEAD
 <p class="muted small">This is your exclusive first offer. If you decline or do not respond within two minutes, it moves to the next ranked available agent.</p>
+=======
+<p class="muted small">Other agents can see this request too &mdash; first to accept wins.</p>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 <div class="row">
     <form method="POST" action="{{ url_for('agent_accept', delivery_id=req.id) }}">{{ csrf_input() }}<button class="btn btn-accent" type="submit">Accept</button></form>
     <form method="POST" action="{{ url_for('agent_reject', delivery_id=req.id) }}"

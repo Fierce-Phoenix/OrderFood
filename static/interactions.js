@@ -4,11 +4,29 @@
     'use strict';
     var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+<<<<<<< HEAD
     /* Flash messages become auto-dismissing toasts. */
     function wireFlashes() {
         var stack = document.querySelector('.flash-stack');
         if (!stack) return;
         stack.querySelectorAll('.flash').forEach(function (el) {
+=======
+    /* Flash messages become auto-dismissing toasts with an icon per category. */
+    function wireFlashes() {
+        var stack = document.querySelector('.flash-stack');
+        if (!stack) return;
+        var icons = { success: 'icon-check', error: 'icon-alert', warning: 'icon-warn' };
+        stack.querySelectorAll('.flash').forEach(function (el) {
+            var kind = (el.className.match(/flash-(\w+)/) || [])[1] || 'success';
+            if (!el.querySelector('svg')) {
+                var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('aria-hidden', 'true');
+                var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+                use.setAttribute('href', '#' + (icons[kind] || 'icon-check'));
+                svg.appendChild(use);
+                el.insertBefore(svg, el.firstChild);
+            }
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
             if (reduceMotion) return;
             setTimeout(function () {
                 el.classList.add('leaving');
@@ -122,6 +140,18 @@
         if (tone) tone.style.display = 'flex';
     };
 
+<<<<<<< HEAD
+=======
+    /* Login: fills the email/password fields from a demo-account button, nothing else. */
+    window.ofFillDemo = function (email, password) {
+        var form = document.querySelector('.auth-card form');
+        if (!form) return;
+        form.email.value = email;
+        form.password.value = password;
+        form.email.focus();
+    };
+
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     document.addEventListener('DOMContentLoaded', function () {
         wireFlashes();
         wireButtonPress();

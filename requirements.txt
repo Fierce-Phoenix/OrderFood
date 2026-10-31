@@ -1,4 +1,7 @@
 Flask>=3.0
 Werkzeug>=3.0
+<<<<<<< HEAD
 requests>=2.31
 razorpay>=2.0
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5

@@ -1,12 +1,16 @@
 """End-to-end tests. Run:  python -m unittest -v test_app"""
 import importlib
+<<<<<<< HEAD
 import hashlib
 import hmac
 import json
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 import os
 import re
 import tempfile
 import unittest
+<<<<<<< HEAD
 from unittest.mock import Mock, patch
 
 _tmp = tempfile.mkdtemp()
@@ -16,14 +20,24 @@ os.environ['ORDERFOOD_SECRET_KEY'] = 'test-key'
 os.environ['ORDERFOOD_MAPS_OFFLINE'] = '1'      # tests never call Google; the offline estimator is used
 os.environ['RAZORPAY_KEY_ID'] = 'rzp_test_unit_test'
 os.environ['RAZORPAY_KEY_SECRET'] = 'unit-test-secret'
+=======
+
+_tmp = tempfile.mkdtemp()
+os.environ['ORDERFOOD_DB'] = os.path.join(_tmp, 'test.db')
+os.environ['ORDERFOOD_WALLET'] = os.path.join(_tmp, 'wallet.json')
+os.environ['ORDERFOOD_SECRET_KEY'] = 'test-key'
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 app_module = importlib.import_module('orderfood_app')
 app = app_module.app
 wallet = app_module.wallet_service
 
 
+<<<<<<< HEAD
 HOME = (19.0596, 72.8295)          # test customer: Bandra West
 
 
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 def db():
     import sqlite3
     c = sqlite3.connect(app.config['DATABASE'])
@@ -51,9 +65,12 @@ class Client:
     def login(self, email, password):
         r = self.post('/login', {'email': email, 'password': password})
         assert r.status_code == 200
+<<<<<<< HEAD
         if 'Where should we deliver' in r.get_data(as_text=True):      # customers confirm a location first
             r = self.post('/location', {'lat': str(HOME[0]), 'lon': str(HOME[1]), 'address': 'Flat 4'})
             assert r.status_code == 200
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         return r
 
 
@@ -63,6 +80,7 @@ def text(r):
 
 class OrderFoodTests(unittest.TestCase):
     def setUp(self):
+<<<<<<< HEAD
         if os.path.exists(app.config['DATABASE']):
             os.remove(app.config['DATABASE'])
         app_module.init_database()
@@ -71,6 +89,12 @@ class OrderFoodTests(unittest.TestCase):
         c.execute("UPDATE users SET lat = 19.0620, lon = 72.8310 WHERE role = 'delivery_agent'")
         c.commit()
         c.close()
+=======
+        for f in (app.config['DATABASE'], app.config['WALLET_FILE']):
+            if os.path.exists(f):
+                os.remove(f)
+        app_module.init_database()
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         self.cust, self.rest, self.agent = Client(), Client(), Client()
         self.cust.login('alice.customer@example.com', 'AlicePass123!')
         self.rest.login('anna.admin@example.com', 'AnnaAdmin123!')
@@ -83,6 +107,7 @@ class OrderFoodTests(unittest.TestCase):
         for _ in range(n):
             self.cust.post('/add_to_cart', {'item_id': item_id})
 
+<<<<<<< HEAD
     def razorpay_order(self, customer=None, amount=18000):
         customer = customer or self.cust
         token = re.search(r'name="token" value="([^"]+)"',
@@ -120,6 +145,9 @@ class OrderFoodTests(unittest.TestCase):
                         mode = os.stat(os.path.join(secret_dir, '.secret_key')).st_mode & 0o777
                         self.assertEqual(mode, 0o600)
 
+=======
+    # --- security ----------------------------------------------------------
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     def test_csrf_blocks_post_without_token(self):
         r = self.cust.post('/add_to_cart', {'item_id': 1}, csrf=False)
         self.assertEqual(r.status_code, 400)
@@ -141,6 +169,7 @@ class OrderFoodTests(unittest.TestCase):
         self.assertIn('Dashboard', text(r))
         self.assertIn('not available', text(r))
 
+<<<<<<< HEAD
     def test_home_navigation_is_available_without_svg_for_all_roles(self):
         guest = Client()
         clients = (guest, self.cust, self.rest, self.agent)
@@ -159,6 +188,8 @@ class OrderFoodTests(unittest.TestCase):
         invalid_demo = Client().post('/login', {'email': 'agent@test.com', 'password': 'agent123'})
         self.assertIn('Invalid email or password', text(invalid_demo))
 
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     def test_cart_prices_cannot_be_tampered(self):
         self.cust.post('/add_to_cart', {'item_id': 1, 'price': '0.01'})
         r = self.cust.get('/cart')
@@ -166,7 +197,11 @@ class OrderFoodTests(unittest.TestCase):
 
     # --- ordering ----------------------------------------------------------
     def test_far_restaurant_cannot_be_ordered(self):
+<<<<<<< HEAD
         r = self.cust.post('/add_to_cart', {'item_id': 16})       # Coastal Kitchen is outside the 30-minute radius
+=======
+        r = self.cust.post('/add_to_cart', {'item_id': 16})       # Coastal Kitchen item (42 min)
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         self.assertIn('too far', text(r))
         self.assertIn('Your cart is empty', text(self.cust.get('/cart')))
 
@@ -208,6 +243,7 @@ class OrderFoodTests(unittest.TestCase):
         self.add(3)
         self.assertIn('Finish your last order', text(self.cust.get('/checkout')))
 
+<<<<<<< HEAD
     def test_razorpay_creates_server_priced_order_and_verifies_payment(self):
         self.add(1)
         self.add(7)
@@ -393,6 +429,9 @@ class OrderFoodTests(unittest.TestCase):
     def test_burger_joint_end_to_end(self):
         burger_owner = Client()
         burger_owner.login('admin@test.com', 'admin123')
+=======
+    def test_burger_joint_end_to_end(self):
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         item = db().execute('SELECT id, price FROM menu_items WHERE restaurant_id = 5 LIMIT 1').fetchone()
         self.add(item['id'], 2)
         total = item['price'] * 2
@@ -405,9 +444,15 @@ class OrderFoodTests(unittest.TestCase):
         self.assertIn('cannot be confirmed yet', text(r))
 
         # restaurant: accept, request agent, mark ready
+<<<<<<< HEAD
         self.assertIn('New order', text(burger_owner.get('/notifications')))
         burger_owner.post(f'/restaurant/order/{oid}/accept')
         burger_owner.post(f'/restaurant/order/{oid}/request_agent')
+=======
+        self.assertIn('New order', text(self.rest.get('/notifications')))
+        self.rest.post(f'/restaurant/order/{oid}/accept')
+        self.rest.post(f'/restaurant/order/{oid}/request_agent')
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         self.assertIn('New delivery request', text(self.agent.get('/notifications')))
         r = self.agent.get('/dashboard/delivery-agent')
         self.assertIn('The Burger Joint', text(r))
@@ -424,7 +469,11 @@ class OrderFoodTests(unittest.TestCase):
         self.agent.post('/agent/active/arrive')
         r = self.agent.post('/agent/active/pickup')
         self.assertIn('not ready yet', text(r))
+<<<<<<< HEAD
         burger_owner.post(f'/restaurant/order/{oid}/ready')
+=======
+        self.rest.post(f'/restaurant/order/{oid}/ready')
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         self.agent.post('/agent/active/pickup')
         self.agent.post('/agent/active/onway')
         r = self.agent.post('/agent/active/delivered')
@@ -432,7 +481,11 @@ class OrderFoodTests(unittest.TestCase):
 
         self.assertEqual(db().execute('SELECT status FROM orders').fetchone()[0], 'delivered')
         self.assertAlmostEqual(self.balance('3'), 40)             # agent default: per order
+<<<<<<< HEAD
         self.assertAlmostEqual(self.balance('5'), total)          # restaurant owner paid on delivery
+=======
+        self.assertAlmostEqual(self.balance('rest_5'), total)     # restaurant paid on delivery
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 
         # only now the customer may confirm; another customer cannot
         self.assertIn('Did you receive your last order', text(self.cust.get('/')))
@@ -447,6 +500,7 @@ class OrderFoodTests(unittest.TestCase):
         self.add(item['id'])
         self.assertIn('Payment', text(self.cust.get('/checkout')))
 
+<<<<<<< HEAD
     def test_agent_delivery_offers_are_sequential_and_ranked(self):
         self.add(1)
         token = re.search(r'name="token" value="([^"]+)"',
@@ -575,6 +629,9 @@ class OrderFoodTests(unittest.TestCase):
     def test_reject_refunds_and_cancel_refunds(self):
         burger_owner = Client()
         burger_owner.login('admin@test.com', 'admin123')
+=======
+    def test_reject_refunds_and_cancel_refunds(self):
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         item = db().execute('SELECT id, price FROM menu_items WHERE restaurant_id = 5 LIMIT 1').fetchone()
         for action in ('reject', 'cancel'):
             self.add(item['id'])
@@ -583,7 +640,11 @@ class OrderFoodTests(unittest.TestCase):
             oid = db().execute('SELECT MAX(id) FROM orders').fetchone()[0]
             self.assertAlmostEqual(self.balance('1'), 650 - item['price'])
             if action == 'reject':
+<<<<<<< HEAD
                 burger_owner.post(f'/restaurant/order/{oid}/reject')
+=======
+                self.rest.post(f'/restaurant/order/{oid}/reject')
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
             else:
                 self.cust.post(f'/orders/{oid}/cancel')
             self.assertAlmostEqual(self.balance('1'), 650)
@@ -601,15 +662,24 @@ class OrderFoodTests(unittest.TestCase):
         self.assertIn('Chicken Biryani', text(self.cust.get('/cart')))
 
     def test_failed_delivery_not_marked_delivered_and_refunded(self):
+<<<<<<< HEAD
         burger_owner = Client()
         item = db().execute('SELECT id, price FROM menu_items WHERE restaurant_id = 5 LIMIT 1').fetchone()
         burger_owner.login('admin@test.com', 'admin123')
+=======
+        item = db().execute('SELECT id, price FROM menu_items WHERE restaurant_id = 5 LIMIT 1').fetchone()
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         self.add(item['id'])
         token = re.search(r'name="token" value="([^"]+)"', text(self.cust.get('/checkout'))).group(1)
         self.cust.post('/checkout', {'token': token, 'address': 'Flat 4'})
         oid = db().execute('SELECT id FROM orders').fetchone()[0]
+<<<<<<< HEAD
         burger_owner.post(f'/restaurant/order/{oid}/accept')
         burger_owner.post(f'/restaurant/order/{oid}/request_agent')
+=======
+        self.rest.post(f'/restaurant/order/{oid}/accept')
+        self.rest.post(f'/restaurant/order/{oid}/request_agent')
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         did = db().execute('SELECT id FROM deliveries').fetchone()[0]
         self.agent.post(f'/agent/request/{did}/accept')
         r = self.agent.post('/agent/active/fail', {'reason': 'Wrong address'})
@@ -618,13 +688,18 @@ class OrderFoodTests(unittest.TestCase):
         self.assertAlmostEqual(self.balance('1'), 650)
 
     def test_all_agents_reject_falls_back_to_restaurant(self):
+<<<<<<< HEAD
         burger_owner = Client()
         item = db().execute('SELECT id FROM menu_items WHERE restaurant_id = 5 LIMIT 1').fetchone()
         burger_owner.login('admin@test.com', 'admin123')
+=======
+        item = db().execute('SELECT id FROM menu_items WHERE restaurant_id = 5 LIMIT 1').fetchone()
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         self.add(item['id'])
         token = re.search(r'name="token" value="([^"]+)"', text(self.cust.get('/checkout'))).group(1)
         self.cust.post('/checkout', {'token': token, 'address': 'Flat 4'})
         oid = db().execute('SELECT id FROM orders').fetchone()[0]
+<<<<<<< HEAD
         burger_owner.post(f'/restaurant/order/{oid}/accept')
         burger_owner.post(f'/restaurant/order/{oid}/request_agent')
         did = db().execute('SELECT id FROM deliveries').fetchone()[0]
@@ -633,6 +708,16 @@ class OrderFoodTests(unittest.TestCase):
         burger_owner.post(f'/restaurant/order/{oid}/ready')
         burger_owner.post(f'/restaurant/order/{oid}/self_deliver')
         burger_owner.post(f'/restaurant/order/{oid}/self_delivered')
+=======
+        self.rest.post(f'/restaurant/order/{oid}/accept')
+        self.rest.post(f'/restaurant/order/{oid}/request_agent')
+        did = db().execute('SELECT id FROM deliveries').fetchone()[0]
+        self.agent.post(f'/agent/request/{did}/reject')          # only one agent exists
+        self.assertEqual(db().execute('SELECT status FROM deliveries').fetchone()[0], 'restaurant_fallback')
+        self.rest.post(f'/restaurant/order/{oid}/ready')
+        self.rest.post(f'/restaurant/order/{oid}/self_deliver')
+        self.rest.post(f'/restaurant/order/{oid}/self_delivered')
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
         self.assertEqual(db().execute('SELECT status FROM orders').fetchone()[0], 'delivered')
 
     def test_restaurant_cannot_touch_other_restaurants(self):
@@ -656,6 +741,7 @@ class OrderFoodTests(unittest.TestCase):
         wallet.credit('1', 10, 'same-ref')
         wallet.credit('1', 10, 'same-ref')
         self.assertAlmostEqual(self.balance('1'), 660)
+<<<<<<< HEAD
         c = db()
         self.assertEqual(c.execute('SELECT COUNT(*) FROM wallet_operations WHERE operation = ? AND reference = ?',
                                    ('credit', 'same-ref')).fetchone()[0], 1)
@@ -708,6 +794,8 @@ class OrderFoodTests(unittest.TestCase):
         self.assertIn('Menu updated.', text(response))
         category = db().execute('SELECT category FROM menu_items WHERE id = ?', (item['id'],)).fetchone()[0]
         self.assertEqual(category, 'Rice & Biryani')
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 
     def test_every_page_renders(self):
         for url in ('/', '/restaurant/1', '/restaurant/4', '/cart', '/orders', '/notifications'):
@@ -716,6 +804,7 @@ class OrderFoodTests(unittest.TestCase):
         self.assertEqual(self.agent.get('/dashboard/delivery-agent').status_code, 200)
 
 
+<<<<<<< HEAD
 # ----------------------------------------------------------------------------------------------
 # Google Maps: location gate, 30-minute rule from real coordinates, live tracking
 # ----------------------------------------------------------------------------------------------
@@ -981,5 +1070,7 @@ class GoogleMapsTests(unittest.TestCase):
         self.svc.browser_key = ''
 
 
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 if __name__ == '__main__':
     unittest.main()

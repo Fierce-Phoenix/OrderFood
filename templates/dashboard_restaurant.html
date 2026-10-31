@@ -2,11 +2,15 @@
 {% block title %}Restaurant dashboard - OrderFood{% endblock %}
 {% block side_title %}Restaurant{% endblock %}
 {% block side_links %}
+<<<<<<< HEAD
 <a href="#top">Dashboard</a><a href="#orders">Orders</a><a href="#payout">Payouts</a><a href="#feedback">Feedback</a><a href="#menu">Menu</a><a href="#info">Restaurant info</a><a href="#revenue">Revenue</a>
 {% endblock %}
 {% block extra_head %}
 {% include "_maps_head.html" %}
 <script src="{{ url_for('static', filename='location_picker.js') }}" defer></script>
+=======
+<a href="#top">Dashboard</a><a href="#orders">Orders</a><a href="#menu">Menu</a><a href="#info">Restaurant info</a><a href="#revenue">Revenue</a>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 {% endblock %}
 {% block content %}
 {% macro act(o, name, text, style='') %}
@@ -18,6 +22,7 @@
     <div class="oc-head"><strong>#{{ o.id }}</strong><span class="pill pill-{{ o.status }}">{{ o.status|label }}</span></div>
     <div class="summary">{{ o.summary or '-' }} &middot; {{ o.total_amount|money }}</div>
     <div class="addr">To {{ o.delivery_address }}</div>
+<<<<<<< HEAD
     {% if (o.payment_ref or '').startswith('razorpay:') %}
     <div class="small muted">
         Restaurant settlement: {{ (o.restaurant_settlement_status or 'pending_setup')|label }}
@@ -25,12 +30,17 @@
         {% if o.restaurant_settlement_message %}<br>{{ o.restaurant_settlement_message }}{% endif %}
     </div>
     {% else %}<div class="small muted">Customer payment: internal wallet</div>{% endif %}
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     {% if o.del_status not in ('not_requested', 'cancelled') and o.del_status != 'restaurant_fallback' %}
         <div class="small muted" style="margin-bottom:.4rem">Delivery: {{ o.del_status|label }}{% if o.delivery_agent_name and o.delivery_agent_name not in ('Unassigned',) %} ({{ o.delivery_agent_name }}){% endif %}</div>
     {% endif %}
     {% if o.del_status == 'restaurant_fallback' %}<div class="fallback-note">No agent available: deliver it yourself.</div>{% endif %}
     <div class="actions">
+<<<<<<< HEAD
     {% if o.status in ('preparing', 'ready', 'out_for_delivery') %}<a class="btn btn-small btn-secondary" href="{{ url_for('track_order', order_id=o.id) }}">Track</a>{% endif %}
+=======
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     {% if o.status == 'pending' %}{{ act(o, 'accept', 'Accept') }}{{ act(o, 'reject', 'Reject', 'btn-danger') }}
     {% elif o.status == 'preparing' %}{{ act(o, 'ready', 'Mark ready') }}
         {% if o.del_status == 'not_requested' %}{{ act(o, 'request_agent', 'Request agent', 'btn-secondary') }}{% endif %}
@@ -56,8 +66,13 @@
 <div class="stats" id="revenue">
     <div class="stat"><div class="muted">New orders</div><div class="num">{{ stats.new }}</div></div>
     <div class="stat"><div class="muted">Active orders</div><div class="num">{{ stats.active }}</div></div>
+<<<<<<< HEAD
     <div class="stat"><div class="muted">Today's order value</div><div class="num">{{ stats.revenue|money }}</div></div>
     <div class="stat"><div class="muted">Internal wallet</div><div class="num">{{ wallet['balance']|money }}</div></div>
+=======
+    <div class="stat"><div class="muted">Today's revenue</div><div class="num">{{ stats.revenue|money }}</div></div>
+    <div class="stat"><div class="muted">Wallet</div><div class="num">{{ wallet['balance']|money }}</div></div>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 </div>
 
 <div class="section-head" id="orders"><h2>Order queue</h2></div>
@@ -80,6 +95,7 @@
         {% for o in done_o[:6] %}{{ order_card(o) }}{% endfor %}
         {% if not done_o %}<p class="small muted">No completed orders yet.</p>{% endif %}</div>
 </div>
+<<<<<<< HEAD
 {% else %}<p class="empty-state">No orders yet.</p>{% endif %}
 
 <div class="section-head" id="payout"><h2>Restaurant payout account</h2></div>
@@ -108,11 +124,15 @@
     <p>{{ review.feedback }}</p>
 </article>
 {% else %}<p class="empty-state">Feedback submitted after completed orders will appear here.</p>{% endfor %}
+=======
+{% else %}<p class="empty-state"><svg><use href="#icon-empty"/></svg><br>No orders yet.</p>{% endif %}
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 
 <div class="section-head" id="menu"><h2>Menu</h2></div>
 <p class="muted">Customers can't order items marked unavailable.</p>
 {% for m in menu %}
 <div class="menu-item {% if not m.is_available %}sold-out{% endif %}">
+<<<<<<< HEAD
     <div><p class="item-name">{{ m.name }}</p>
         <form method="POST" action="{{ url_for('menu_edit', item_id=m.id, action='category') }}" class="row">{{ csrf_input() }}
             <label class="visually-hidden" for="cat{{ m.id }}">Category for {{ m.name }}</label>
@@ -122,6 +142,9 @@
             <button class="btn btn-secondary btn-small" type="submit">Save category</button>
         </form>
     </div>
+=======
+    <div><p class="item-name">{{ m.name }}</p><span class="muted small">{{ m.category }}</span></div>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     <div class="row">
         <form method="POST" action="{{ url_for('menu_edit', item_id=m.id, action='price') }}" class="row">{{ csrf_input() }}
             <label class="muted small" for="p{{ m.id }}" style="margin:0">Price</label>
@@ -139,13 +162,18 @@
     <div><label for="new-name">New item name</label><input type="text" id="new-name" name="name" required></div>
     <div><label for="new-price">Price</label><input type="number" id="new-price" name="price" min="1" step="0.5" required></div>
     <div><label for="new-cat">Category</label>
+<<<<<<< HEAD
         <select id="new-cat" name="category">{% for category in FOOD_CATEGORIES %}
             <option value="{{ category }}" {% if category == 'Main Course' %}selected{% endif %}>{{ category }}</option>
         {% endfor %}</select></div>
+=======
+        <select id="new-cat" name="category"><option>Appetizers</option><option selected>Main Course</option><option>Desserts</option><option>Drinks</option></select></div>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     <div style="flex:0 0 auto"><button class="btn btn-accent" type="submit">Add item</button></div>
 </form>
 
 <div class="section-head" id="info"><h2>Restaurant info</h2></div>
+<<<<<<< HEAD
 <form method="POST" action="{{ url_for('restaurant_info') }}" class="box loc-picker" data-pin="restaurant"
       {% if rest.lat is not none %}data-lat="{{ rest.lat }}" data-lon="{{ rest.lon }}"{% endif %}>{{ csrf_input() }}
     <input type="hidden" name="lat" value="{{ rest.lat if rest.lat is not none else '' }}"><input type="hidden" name="lon" value="{{ rest.lon if rest.lon is not none else '' }}">
@@ -155,6 +183,11 @@
     <div class="lp-search"></div>
     <div class="gmap lp-map" role="application" aria-label="Map: set the restaurant location"></div>
     <p class="notice lp-nomap" hidden>Maps unavailable: location stays as it is.</p>
+=======
+<form method="POST" action="{{ url_for('restaurant_info') }}" class="box">{{ csrf_input() }}
+    <label for="r-name">Name</label><input type="text" id="r-name" name="name" required value="{{ rest.name }}">
+    <label for="r-addr">Address / location</label><input type="text" id="r-addr" name="address" required value="{{ rest.address }}">
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
     <label for="r-desc">Description</label><input type="text" id="r-desc" name="description" value="{{ rest.description or '' }}">
     <p><button class="btn" type="submit">Save info</button></p>
 </form>

@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}Active delivery - OrderFood{% endblock %}
+<<<<<<< HEAD
 {% block extra_head %}
 {% include "_maps_head.html" %}
 <script src="{{ url_for('static', filename='tracking.js') }}" defer></script>
@@ -7,6 +8,11 @@
 {% block content %}
 {% set s = d.status %}
 <a href="{{ url_for('delivery_agent_dashboard') }}" class="back-link">Dashboard</a>
+=======
+{% block content %}
+{% set s = d.status %}
+<a href="{{ url_for('delivery_agent_dashboard') }}" class="back-link"><svg aria-hidden="true"><use href="#icon-arrow-left"/></svg> Dashboard</a>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 <p class="eyebrow">Active delivery</p>
 <h1>Order #{{ d.order_id }}</h1>
 {% set stage = {'accepted': 1, 'at_restaurant': 2, 'picked_up': 3, 'on_the_way': 4}.get(s, 1) %}
@@ -18,8 +24,12 @@
         ('picked_up','Picked up', s in ('picked_up','on_the_way')), ('on_the_way','On the way', s == 'on_the_way')] %}
     <span class="tab {% if s == key %}active{% endif %}">{{ text }}{{ ' (done)' if reached and s != key else '' }}</span>{% endfor %}
 </div>
+<<<<<<< HEAD
 {% set panel_role = 'agent' %}{% set panel_api = url_for('api_tracking', order_id=d.order_id) %}{% set panel_static = none %}{% set panel_rest = d.rest_name ~ ' - ' ~ d.rest_address %}{% set panel_dest = d.delivery_address %}
 {% include "_track_panel.html" %}
+=======
+<div class="map-box">Map: <a href="{{ map_url }}" target="_blank" rel="noopener">open pickup location in OpenStreetMap</a> (mocked, not live navigation)</div>
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
 <div class="two-col">
     <div class="box"><h3>Pickup</h3><strong>{{ d.rest_name }}</strong><br>{{ d.rest_address }}<br>
         <span class="muted">{{ 'Picked up' if s in ('picked_up','on_the_way') else 'Waiting for pickup' }}</span></div>

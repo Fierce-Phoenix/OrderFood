@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Local secrets
 .env
 .secret_key
@@ -14,3 +15,8 @@ __pycache__/
 
 # macOS metadata
 .DS_Store
+=======
+.secret_key
+__pycache__/
+*.pyc
+>>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
