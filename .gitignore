@@ -1,22 +1,21 @@
-<<<<<<< HEAD
-# Local secrets
+# Environment variables and secrets
 .env
 .secret_key
 
-# Local database and wallet state
-orderfood.db
-orderfood.db-shm
-orderfood.db-wal
+# Database and local application state
+*.db
+*.db-shm
+*.db-wal
 wallet.json
 
-# Python-generated files
+# Python
 __pycache__/
 *.py[cod]
+venv/
+.venv/
 
-# macOS metadata
+# macOS
 .DS_Store
-=======
-.secret_key
-__pycache__/
-*.pyc
->>>>>>> 718eed4856796a17f73eb0b6274bd9d7b38df7f5
+
+# IDE
+.idea/
