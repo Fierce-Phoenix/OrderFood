@@ -29,29 +29,33 @@ ETA_TTL = 600            # seconds a restaurant->customer estimate is reused
 ROAD_FACTOR = 1.35       # straight-line -> road distance, for the offline fallback
 FALLBACK_KMH = 22.0      # average urban speed, for the offline fallback
 
-# Neighbourhoods used to place seeded restaurants / drivers (lat, lon at the area centre).
-AREAS = [
-    ('Dadar', 19.0178, 72.8478), ('Bandra West', 19.0596, 72.8295), ('Andheri West', 19.1136, 72.8697),
-    ('Worli', 19.0176, 72.8156), ('Juhu', 19.1075, 72.8263), ('Lower Parel', 18.9949, 72.8258),
-    ('Powai', 19.1197, 72.9051), ('Kurla', 19.0726, 72.8845), ('Khar West', 19.0716, 72.8369),
-    ('Mahim', 19.0409, 72.8400), ('Mohammed Ali Road', 18.9600, 72.8330), ('Santacruz', 19.0810, 72.8412),
-    ('Vile Parle', 19.0990, 72.8440), ('Matunga', 19.0270, 72.8570), ('Chembur', 19.0522, 72.9005),
-    ('Colaba', 18.9067, 72.8147), ('Goregaon', 19.1663, 72.8526), ('Malad West', 19.1860, 72.8485),
-    ('Ghatkopar', 19.0860, 72.9081), ('Sion', 19.0390, 72.8619), ('Versova', 19.1310, 72.8150),
-    ('Thane West, Thane', 19.2183, 72.9781), ('Thane East, Thane', 19.1973, 72.9766),
-    ('Mulund West', 19.1726, 72.9425), ('Mulund East', 19.1718, 72.9630),
-    ('Vikhroli West', 19.1111, 72.9270), ('Vikhroli East', 19.1114, 72.9370),
-    ('Marol Naka', 19.1097, 72.8790),
-]
-RESTAURANT_AREAS = [
-    ('Thane West, Thane', 19.2183, 72.9781),
-    ('Thane East, Thane', 19.1973, 72.9766),
-    ('Mulund West, Mumbai', 19.1726, 72.9425),
-    ('Mulund East, Mumbai', 19.1718, 72.9630),
-    ('Vikhroli West, Mumbai', 19.1111, 72.9270),
-    ('Vikhroli East, Mumbai', 19.1114, 72.9370),
-    ('Marol Naka, Mumbai', 19.1097, 72.8790),
-]
+def _load_area_data():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'service_areas.json')
+    try:
+        with open(path, encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f'Could not load service area configuration: {path}') from exc
+    try:
+        areas = [(row['name'], float(row['lat']), float(row['lon'])) for row in data['areas']]
+        restaurant_rows = data['restaurant_areas']
+        restaurant_areas = [
+            (row['name'], float(row['lat']), float(row['lon'])) for row in restaurant_rows
+        ]
+        restaurant_area_weights = [int(row['seed_weight']) for row in restaurant_rows]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f'Service area configuration has an invalid shape: {path}') from exc
+    coordinates = [(area[1], area[2]) for area in areas + restaurant_areas]
+    valid_coordinates = all(
+        math.isfinite(lat) and math.isfinite(lon) and abs(lat) <= 90 and abs(lon) <= 180
+        for lat, lon in coordinates)
+    if (not areas or not restaurant_areas or any(weight < 0 for weight in restaurant_area_weights) or
+            not any(restaurant_area_weights) or not valid_coordinates):
+        raise RuntimeError(f'Service area configuration must contain valid areas: {path}')
+    return areas, restaurant_areas, restaurant_area_weights
+
+
+AREAS, RESTAURANT_AREAS, RESTAURANT_AREA_WEIGHTS = _load_area_data()
 
 
 def load_dotenv(path):

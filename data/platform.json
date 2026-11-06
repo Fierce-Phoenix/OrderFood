@@ -1,0 +1,27 @@
+{
+  "delivery": {
+    "max_minutes": 30,
+    "pickup_buffer_minutes": 10
+  },
+  "wallet": {
+    "demo_customer_balance": 650.0
+  },
+  "agent_payout": {
+    "rates": {
+      "per_order": 40,
+      "per_km": 10,
+      "per_min": 2
+    },
+    "labels": {
+      "per_order": "Per order",
+      "per_km": "Per kilometre",
+      "per_min": "Per minute"
+    }
+  },
+  "delivery_failure_reasons": [
+    "Customer not reachable",
+    "Wrong address",
+    "Order damaged",
+    "Other"
+  ]
+}

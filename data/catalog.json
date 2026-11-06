@@ -1,0 +1,100 @@
+{
+  "categories": [
+    "Appetizers",
+    "Main Course",
+    "Rice & Biryani",
+    "Breads",
+    "Sides",
+    "Breakfast",
+    "Desserts",
+    "Drinks"
+  ],
+  "category_normalization_rules": [
+    {"category": "Breakfast", "keywords": ["pancake", "waffle", "breakfast", "omelette"]},
+    {"category": "Drinks", "keywords": ["drink", "coffee", "tea", "chai", "juice", "lassi", "chaas", "lemonade", "milkshake", "smoothie", "soda"]},
+    {"category": "Desserts", "keywords": ["dessert", "sweet", "cake", "pastry", "brownie", "ice cream", "kulfi", "gulab", "phirni", "halwa", "treat"]},
+    {"category": "Rice & Biryani", "keywords": ["biryani", "rice", "pulao"]},
+    {"category": "Breads", "keywords": ["naan", "roti", "paratha", "pita", "bread"]},
+    {"category": "Sides", "keywords": ["raita", "fries", "side", "dip", "chutney", "sauce"]},
+    {"category": "Appetizers", "keywords": ["starter", "appetizer", "salad", "soup", "samosa", "dumpling", "dim sum", "spring roll", "prawn fry", "fish fry", "kebab"]}
+  ],
+  "default_menu": [
+    {"name": "Signature Starter", "category": "Appetizers", "price": 120, "available": true},
+    {"name": "House Special", "category": "Main Course", "price": 240, "available": true},
+    {"name": "Sweet Treat", "category": "Desserts", "price": 100, "available": true},
+    {"name": "Fresh Drink", "category": "Drinks", "price": 80, "available": true}
+  ],
+  "restaurants": [
+    {
+      "slug": "annapurna-meals",
+      "name": "Annapurna Meals",
+      "address": "Mumbai",
+      "description": "Authentic North Indian Thalis",
+      "style": {"photo": "photo-1546833999-b9f581a1996d", "icon": "grain", "tone": 1, "cuisine": "Rice & grains"},
+      "menu": [
+        {"name": "Veg Thali", "category": "Main Course", "price": 180, "available": true},
+        {"name": "Paneer Thali", "category": "Main Course", "price": 220, "available": true},
+        {"name": "Rajma Chawal", "category": "Main Course", "price": 140, "available": true},
+        {"name": "Chole Bhature", "category": "Main Course", "price": 120, "available": false},
+        {"name": "Masala Chaas", "category": "Drinks", "price": 40, "available": true},
+        {"name": "Gulab Jamun", "category": "Desserts", "price": 60, "available": true}
+      ]
+    },
+    {
+      "slug": "spice-route-biryani",
+      "name": "Spice Route Biryani",
+      "address": "Mumbai",
+      "description": "Hyderabadi and Lucknowi Biryanis",
+      "style": {"photo": "photo-1589302168068-964664d93dc0", "icon": "grain", "tone": 2, "cuisine": "Rice & grains"},
+      "menu": [
+        {"name": "Chicken Biryani", "category": "Main Course", "price": 240, "available": true},
+        {"name": "Veg Biryani", "category": "Main Course", "price": 200, "available": true},
+        {"name": "Egg Biryani", "category": "Main Course", "price": 210, "available": true},
+        {"name": "Raita", "category": "Appetizers", "price": 30, "available": true},
+        {"name": "Phirni", "category": "Desserts", "price": 70, "available": true}
+      ]
+    },
+    {
+      "slug": "green-bowl-salads",
+      "name": "Green Bowl Salads",
+      "address": "Mumbai",
+      "description": "Fresh organic salads and wraps",
+      "style": {"photo": "photo-1512621776951-a57141f2eefd", "icon": "leaf", "tone": 3, "cuisine": "Salads & veg"},
+      "menu": [
+        {"name": "Paneer Wrap", "category": "Main Course", "price": 160, "available": true},
+        {"name": "Greek Salad", "category": "Appetizers", "price": 190, "available": true},
+        {"name": "Quinoa Bowl", "category": "Main Course", "price": 220, "available": true},
+        {"name": "Cold Coffee", "category": "Drinks", "price": 110, "available": true}
+      ]
+    },
+    {
+      "slug": "coastal-kitchen",
+      "name": "Coastal Kitchen",
+      "address": "Far Away",
+      "description": "Premium Seafood and Coastal Delicacies",
+      "style": {"photo": "photo-1565557623262-b51c2513a641", "icon": "fish", "tone": 4, "cuisine": "Seafood"},
+      "menu": [
+        {"name": "Fish Curry Rice", "category": "Main Course", "price": 260, "available": true},
+        {"name": "Prawn Fry", "category": "Appetizers", "price": 320, "available": true}
+      ]
+    },
+    {"slug": "the-burger-joint", "name": "The Burger Joint", "address": "Mumbai", "description": "Gourmet burgers and loaded fries", "style": {"photo": "photo-1568901346375-23c9450c58cd", "icon": "flame", "tone": 5, "cuisine": "Grilled & spicy"}},
+    {"slug": "pizza-planet", "name": "Pizza Planet", "address": "Mumbai", "description": "Authentic Neapolitan style pizzas", "style": {"photo": "photo-1565299624946-b28f40a0ae38", "icon": "flame", "tone": 1, "cuisine": "Grilled & spicy"}},
+    {"slug": "sushi-zen", "name": "Sushi Zen", "address": "Mumbai", "description": "Fresh premium sushi and sashimi", "style": {"photo": "photo-1579871494447-9811cf80d66c", "icon": "fish", "tone": 2, "cuisine": "Seafood"}},
+    {"slug": "taco-town", "name": "Taco Town", "address": "Mumbai", "description": "Street style Mexican tacos", "style": {"photo": "photo-1551504734-5ee1c4a1479b", "icon": "flame", "tone": 3, "cuisine": "Grilled & spicy"}},
+    {"slug": "wok-express", "name": "Wok Express", "address": "Mumbai", "description": "Fast and fiery Asian stir-fry", "style": {"photo": "photo-1512058564366-18510be2db19", "icon": "flame", "tone": 4, "cuisine": "Grilled & spicy"}},
+    {"slug": "pasta-palace", "name": "Pasta Palace", "address": "Mumbai", "description": "Handmade Italian pasta", "style": {"photo": "photo-1551183053-bf91a1d81141", "icon": "grain", "tone": 5, "cuisine": "Rice & grains"}},
+    {"slug": "desert-delight", "name": "Desert Delight", "address": "Mumbai", "description": "Exotic Middle Eastern sweets", "style": {"photo": "photo-1519676867240-f03562e64548", "icon": "sweet", "tone": 1, "cuisine": "Desserts"}},
+    {"slug": "kebab-kingdom", "name": "Kebab Kingdom", "address": "Mumbai", "description": "Char-grilled tandoori specialties", "style": {"photo": "photo-1529006557810-274b9b2fc783", "icon": "flame", "tone": 2, "cuisine": "Grilled & spicy"}},
+    {"slug": "the-pancake-house", "name": "The Pancake House", "address": "Mumbai", "description": "Fluffy pancakes and waffles", "style": {"photo": "photo-1528207776546-365bb710ee93", "icon": "sweet", "tone": 3, "cuisine": "Desserts"}},
+    {"slug": "dim-sum-dynasty", "name": "Dim Sum Dynasty", "address": "Mumbai", "description": "Hand-crafted dumplings", "style": {"photo": "photo-1496116218417-1a781b1c416c", "icon": "grain", "tone": 4, "cuisine": "Rice & grains"}},
+    {"slug": "mediterranean-magic", "name": "Mediterranean Magic", "address": "Mumbai", "description": "Hummus, Pita and Falafel", "style": {"photo": "photo-1540420773420-3366772f4999", "icon": "leaf", "tone": 5, "cuisine": "Salads & veg"}},
+    {"slug": "juice-junction", "name": "Juice Junction", "address": "Mumbai", "description": "Fresh cold-pressed juices", "style": {"photo": "photo-1600271886742-f049cd451bba", "icon": "drink", "tone": 1, "cuisine": "Drinks"}},
+    {"slug": "the-steakhouse", "name": "The Steakhouse", "address": "Mumbai", "description": "Premium cuts and grilled sides", "style": {"photo": "photo-1600891964599-f61ba0e24092", "icon": "flame", "tone": 2, "cuisine": "Grilled & spicy"}},
+    {"slug": "noodle-nation", "name": "Noodle Nation", "address": "Mumbai", "description": "Authentic Ramen and Udon", "style": {"photo": "photo-1569718212165-3a8278d5f624", "icon": "grain", "tone": 3, "cuisine": "Rice & grains"}},
+    {"slug": "bake-street", "name": "Bake Street", "address": "Mumbai", "description": "Artisan breads and pastries", "style": {"photo": "photo-1509440159596-0249088772ff", "icon": "grain", "tone": 4, "cuisine": "Rice & grains"}},
+    {"slug": "curry-corner", "name": "Curry Corner", "address": "Mumbai", "description": "Homestyle Indian curries", "style": {"photo": "photo-1585937421612-70a008356fbe", "icon": "spice", "tone": 5, "cuisine": "Curries & spice"}},
+    {"slug": "samosa-station", "name": "Samosa Station", "address": "Mumbai", "description": "Crispy samosas and chai", "style": {"photo": "photo-1601050690597-df0568f70950", "icon": "spice", "tone": 1, "cuisine": "Curries & spice"}},
+    {"slug": "the-vegan-hub", "name": "The Vegan Hub", "address": "Mumbai", "description": "100% plant-based delicacies", "style": {"photo": "photo-1604908176997-125f25cc6f3d", "icon": "leaf", "tone": 2, "cuisine": "Salads & veg"}}
+  ]
+}

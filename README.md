@@ -89,6 +89,21 @@ Add the required configuration to `.env`.
 
 Do not upload `.env` or share API secrets. The example file can be committed, but actual credentials must remain private.
 
+The example leaves optional provider keys blank so a fresh local setup uses offline maps and does
+not attempt payment-provider requests. Common settings include:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ORDERFOOD_ENV` | Environment mode (`development` or `production`) | `development` |
+| `ORDERFOOD_SECRET_KEY` | Flask session-signing key; required in production and at least 32 characters | Generated local key in development |
+| `ORDERFOOD_DB` | SQLite database path | `orderfood.db` in the project directory |
+| `ORDERFOOD_HOST`, `ORDERFOOD_PORT` | Bind address and port for the development server | `127.0.0.1`, `9000` |
+| `GOOGLE_MAPS_API_KEY` | Browser Maps/Places and fallback server key | Empty; offline location estimates |
+| `GOOGLE_MAPS_SERVER_KEY` | Optional server-only key for geocoding/routes | Empty; uses `GOOGLE_MAPS_API_KEY` |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay checkout credentials | Empty; online checkout unavailable |
+| `RAZORPAY_ROUTE_ENABLED` | Enable configured marketplace transfers | `false` |
+| `ORDERFOOD_SEED_DEMO_USERS` | Seed demo accounts outside production only | Disabled |
+
 ### Google Maps
 
 To enable maps and route calculations, configure `GOOGLE_MAPS_API_KEY` in `.env`.
@@ -129,7 +144,44 @@ Open the application at:
 
 `http://127.0.0.1:9000`
 
-The application creates its local SQLite database when required.
+The application creates its local SQLite database when required. During registration, users choose
+Customer, Restaurant partner, or Delivery agent. Customer accounts are created immediately.
+Restaurant and delivery-agent choices submit an onboarding application; they do not grant staff
+access. Applications are stored in the `account_applications` table for review, and a trusted
+administrator must verify and provision an approved account before the applicant can log in.
+The application currently has no self-service staff approval screen. The app does not seed demo
+users by default. For local-only demo/test fixtures, set
+`ORDERFOOD_SEED_DEMO_USERS=1`; production mode ignores this option.
+
+`python3 orderfood_app.py` starts Flask's development server and is intended only for local use.
+For deployment, run the `orderfood_app:app` WSGI application with a production WSGI server behind
+HTTPS. Set `ORDERFOOD_ENV=production`, provide a stable secret of at least 32 characters through
+your deployment secret manager, use a persistent writable database path, and keep debug mode off.
+Restrict browser Maps keys to the deployed site and keep server/payment secrets server-side. Back
+up the SQLite database before upgrades; startup applies schema migrations.
+
+## Catalog and location data
+
+The SQLite database is the source of truth for live restaurants, menus, and menu categories.
+On a new database, `data/catalog.json` supplies the initial restaurants, menu items, categories,
+and restaurant-card presentation metadata. Restaurant styles are associated with stable slugs,
+not display names. Seed restaurant and menu records are inserted only when the restaurant table
+is empty; editing the JSON does not overwrite existing restaurant or menu data.
+
+Menu category choices are stored in the `menu_categories` table and validated by the application
+and database. The category definitions in `data/catalog.json` add or update those choices during
+database initialization.
+
+`data/service_areas.json` contains the offline location-picker areas, restaurant placement areas,
+and seed distribution weights. It is configuration data rather than live restaurant location
+data: actual restaurant and delivery-agent coordinates are stored in SQLite.
+`data/platform.json` holds fixed operational settings that are not edited through the app, such as
+delivery timing, the local demo customer's wallet balance, delivery-agent payout rates, and delivery
+failure reasons. Publicly registered customers always start with a zero wallet balance; grants need
+to be issued through an authorized, auditable funding process. On production startup, unchanged
+built-in demo passwords are revoked. Legacy wallet balances are preserved: old balances without
+reliable funding provenance cannot safely be classified as signup credit, so review their ledger
+and reconcile them through an auditable process rather than subtracting funds automatically.
 
 ## Payment and Settlements
 
@@ -161,6 +213,10 @@ The automated tests use an isolated temporary SQLite database. Razorpay calls ar
 
 See [TESTING.md](TESTING.md) for further details.
 
+Before sharing or committing changes, check `git status`, confirm `.env`, `.secret_key`, and local
+database files are not tracked, run the full test suite, and run `git diff --check`. Tests use
+temporary storage and test-only credentials; they do not require real Maps or Razorpay credentials.
+
 ## Project Structure
 
 ```text
@@ -170,6 +226,10 @@ CS100-Group-Project/
 │   ├── css/
 │   └── JavaScript files
 │
+├── data/
+│   ├── catalog.json
+│   ├── platform.json
+│   └── service_areas.json
 ├── templates/
 │   └── HTML templates
 │

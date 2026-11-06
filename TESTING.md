@@ -29,3 +29,8 @@ For a manual end-to-end browser test, configure Razorpay Test Mode credentials i
 ## Isolation and safety
 
 The harness sets a temporary database path and test-only Flask/Razorpay configuration before importing the application. It should not alter your normal application database, wallet file, or real payment configuration.
+
+The test environment is restored and its temporary directory is removed when the test module exits.
+Do not invoke individual tests by importing the application first in the same process, since the
+application reads its database and provider configuration during import. Use `run_tests.py` or
+`python3 -m unittest test_app` so the isolated settings are applied before import.
