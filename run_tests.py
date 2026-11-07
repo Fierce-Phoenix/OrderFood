@@ -23,7 +23,7 @@ def main():
                  if ('razorpay' in name or 'refund' in name or 'route_settles' in name)]
         suite = unittest.TestSuite(test_app.OrderFoodTests(name) for name in names)
     else:
-        suite = loader.loadTestsFromTestCase(test_app.OrderFoodTests)
+        suite = loader.loadTestsFromModule(test_app)
 
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1

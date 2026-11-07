@@ -1,6 +1,6 @@
 {
+  "schema_version": 1,
   "delivery": {
-    "max_minutes": 30,
     "pickup_buffer_minutes": 10
   },
   "wallet": {

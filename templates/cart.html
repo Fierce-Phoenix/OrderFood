@@ -47,6 +47,10 @@
     <span class="row"><a class="btn btn-secondary" href="{{ url_for('home') }}">Add more</a>
     {% if blocked %}<button class="btn" disabled>Checkout</button>
     {% else %}<a class="btn btn-accent" href="{{ url_for('checkout_review') }}">Checkout</a>{% endif %}</span></div>
+{% if not can_order %}
+<p class="notice" role="status">Your cart is read-only until you set a delivery location.
+    <a href="{{ url_for('location') }}">Set delivery location</a>.</p>
+{% endif %}
 {% else %}
 <p class="empty-state">Your cart is empty. <a href="{{ url_for('home') }}">Go find some food!</a></p>
 {% endif %}

@@ -31,10 +31,17 @@
             <label for="restaurant_address">Restaurant address</label>
             <input type="text" name="restaurant_address" id="restaurant_address"
                    value="{{ request.form.get('restaurant_address', '') }}">
-            <p class="small muted">Restaurant applications are reviewed before an account is provisioned.</p>
+            <p class="small muted">Restaurant applications are reviewed before an account is provisioned.
+                If your restaurant was bulk-imported, use its listed owner email; its verified listing is linked after intake approval.</p>
         </div>
         <div id="agent-fields">
             <p class="small muted">Delivery-agent applications are reviewed before an account is provisioned.</p>
+        </div>
+        <div id="staff-password-fields" hidden>
+            <label for="staff-password">Password (at least 12 characters)</label>
+            <input type="password" name="staff_password" id="staff-password" minlength="12"
+                   autocomplete="new-password">
+            <p class="small muted">Your password is stored as a hash and used only if the application is approved.</p>
         </div>
         <p><button id="registration-submit" class="btn btn-accent btn-block" type="submit">Register</button></p>
     </form>
@@ -46,6 +53,8 @@
     const restaurantFields = document.getElementById('restaurant-fields');
     const agentFields = document.getElementById('agent-fields');
     const passwordField = document.getElementById('password');
+    const staffPasswordFields = document.getElementById('staff-password-fields');
+    const staffPassword = document.getElementById('staff-password');
     const restaurantName = document.getElementById('restaurant_name');
     const restaurantAddress = document.getElementById('restaurant_address');
     const heading = document.getElementById('registration-heading');
@@ -59,6 +68,8 @@
         restaurantFields.hidden = !restaurant;
         agentFields.hidden = type !== 'delivery_agent';
         passwordField.required = customer;
+        staffPasswordFields.hidden = customer;
+        staffPassword.required = !customer;
         restaurantName.required = restaurant;
         restaurantAddress.required = restaurant;
         heading.textContent = customer ? 'Create account' : 'Apply to join OrderFood';

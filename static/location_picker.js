@@ -2,7 +2,7 @@
    Used for the customer's delivery location and for a restaurant's own location.
    Markup contract: <form class="loc-picker" data-lat data-lon data-pin data-require>
      .lp-search (autocomplete goes here)  .lp-map  .lp-gps (button)  .lp-nomap (note)  .lp-error
-     input[name=lat] input[name=lon] input[name=address] [select[name=area]] */
+     input[name=lat] input[name=lon] input[name=address] */
 (function () {
     var roots = document.querySelectorAll('.loc-picker');
     if (!roots.length) return;
@@ -14,7 +14,7 @@
         var note = root.querySelector('.lp-nomap');
         if (note) {
             note.hidden = false;
-            if (why === 'auth') note.textContent = 'Google Maps rejected the API key (check that Maps JavaScript API, Places API (New), Geocoding API and Routes API are enabled). You can still pick an area below.';
+            if (why === 'auth') note.textContent = 'Google Maps is unavailable. You can continue browsing menus in read-only mode.';
         }
     }
 
@@ -23,7 +23,6 @@
         var latEl = root.querySelector('input[name=lat]');
         var lonEl = root.querySelector('input[name=lon]');
         var addrEl = root.querySelector('input[name=address]');
-        var areaEl = root.querySelector('select[name=area]');
         var hasPoint = !!(root.dataset.lat && root.dataset.lon);
         var start = hasPoint ? { lat: +root.dataset.lat, lng: +root.dataset.lon } : { lat: 19.076, lng: 72.8777 };
 
@@ -43,7 +42,6 @@
             map.panTo(p);
             latEl.value = p.lat.toFixed(6);
             lonEl.value = p.lng.toFixed(6);
-            if (areaEl) areaEl.value = '';
             if (address) { addrEl.value = address; }
             else if (reverse) {
                 geocoder.geocode({ location: p }).then(function (res) {
@@ -97,12 +95,12 @@
     function guard(root) {                                       // customers must choose something
         if (root.dataset.require !== '1') return;
         root.addEventListener('submit', function (ev) {
+            if (ev.submitter && ev.submitter.value === 'skip') return;
             var lat = root.querySelector('input[name=lat]').value;
-            var area = root.querySelector('select[name=area]');
-            if (!lat && !(area && area.value)) {
+            if (!lat) {
                 ev.preventDefault();
                 var e = root.querySelector('.lp-error');
-                if (e) { e.hidden = false; e.textContent = 'Search for your address, use your current location, or tap the map first.'; }
+                if (e) { e.hidden = false; e.textContent = 'Choose a location on the map, or continue browsing read-only.'; }
             }
         });
     }

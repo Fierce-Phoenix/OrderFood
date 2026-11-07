@@ -6,9 +6,9 @@
 {% endblock %}
 {% block content %}
 <div style="max-width:760px;margin:0 auto">
-    <p class="eyebrow">Before we show you restaurants</p>
+    <p class="eyebrow">Optional delivery location</p>
     <h1>Where should we deliver?</h1>
-    <p class="muted">We only show restaurants that can reach you within 30 minutes of your pin.</p>
+    <p class="muted">Set a pin to enable ordering. You can browse menus without a location.</p>
 
     <form method="POST" action="{{ url_for('location') }}" class="box loc-picker" data-require="1" data-pin="home"
           {% if saved %}data-lat="{{ saved[0] }}" data-lon="{{ saved[1] }}"{% endif %}>
@@ -21,20 +21,18 @@
         <button type="button" class="btn btn-secondary lp-gps" style="margin-top:.6rem">Use my current location</button>
         <div class="gmap lp-map" role="application" aria-label="Map: tap or drag the pin to set your delivery location"></div>
         <p class="notice lp-nomap" role="status" {% if maps_cfg.key %}hidden{% endif %}>
-            Google Maps is not configured (add <code>GOOGLE_MAPS_API_KEY</code> to <code>.env</code>). Pick your area below instead.</p>
+            Maps is unavailable. You can continue browsing menus in read-only mode.</p>
         <p class="notice lp-error" role="alert" hidden></p>
 
         <label for="loc-address">Delivery address</label>
         <input type="text" id="loc-address" name="address" maxlength="200" value="{{ address }}" placeholder="Filled in from the map &mdash; add flat / landmark if you like">
 
-        <details style="margin:.8rem 0" {% if not maps_cfg.key %}open{% endif %}>
-            <summary>Or choose an area</summary>
-            <select name="area" aria-label="Area">
-                <option value="">Select an area&hellip;</option>
-                {% for a in areas %}<option value="{{ a[0] }}">{{ a[0] if ', ' in a[0] else a[0] ~ ', Mumbai' }}</option>{% endfor %}
-            </select>
-        </details>
-        <button class="btn btn-accent" type="submit">{% if saved %}Confirm this location{% else %}Save and continue{% endif %}</button>
+        <div class="row">
+            <button class="btn btn-accent" type="submit" name="action" value="save">
+                {% if saved %}Confirm this location{% else %}Save delivery location{% endif %}</button>
+            <button class="btn btn-secondary" type="submit" name="action" value="skip" formnovalidate>
+                Continue browsing read-only</button>
+        </div>
     </form>
 </div>
 {% endblock %}

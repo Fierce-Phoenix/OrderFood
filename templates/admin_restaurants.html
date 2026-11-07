@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% block title %}Restaurant onboarding - OrderFood{% endblock %}
+{% block content %}
+<div class="section-head">
+    <div><p class="eyebrow">Platform administration</p><h1>Restaurant onboarding</h1></div>
+</div>
+<p class="box small"><strong>Before approving:</strong> independently verify the applicant's identity,
+email ownership, restaurant details, and authority to represent the business. The application does
+not perform email verification or external business checks.</p>
+
+<section class="box" aria-labelledby="bulk-import-heading">
+    <h2 id="bulk-import-heading">Stage a bulk import</h2>
+    <p>Upload a UTF-8 CSV with exactly these headers:
+        <code>restaurant_name,restaurant_slug,address,description,owner_name,owner_email,menu_json</code>.
+        Up to 500 restaurants per file. <code>menu_json</code> is an array of 1-200 items with
+        <code>name</code>, <code>price</code>, and an existing <code>category</code>; optional fields
+        are <code>description</code> and boolean <code>available</code>. Imports are staged for review;
+        they are not made visible to customers.</p>
+    <form method="POST" action="{{ url_for('admin_import_restaurants') }}" enctype="multipart/form-data">
+        {{ csrf_input() }}
+        <label for="csv-file">Restaurant CSV</label>
+        <input id="csv-file" name="csv_file" type="file" accept=".csv,text/csv" required>
+        <button class="btn btn-accent" type="submit">Validate and stage</button>
+    </form>
+</section>
+
+<div class="section-head"><h2>Imported restaurants awaiting review</h2></div>
+{% if intake_rows %}
+<form id="bulk-intake-review" method="POST" action="{{ url_for('admin_review_intake_bulk') }}">
+    {{ csrf_input() }}
+    <button class="btn btn-accent" type="submit" name="action" value="approve">
+        Approve selected as inactive
+    </button>
+    <button class="btn btn-danger" type="submit" name="action" value="reject">
+        Reject selected
+    </button>
+</form>
+    {% for row in intake_rows %}
+    <article class="box" aria-labelledby="intake-{{ row.id }}">
+        <div class="row between">
+            <div>
+                <label><input type="checkbox" name="intake_ids" value="{{ row.id }}"
+                              form="bulk-intake-review"> Select for bulk review</label>
+                <h3 id="intake-{{ row.id }}">{{ row.restaurant_name }}</h3>
+                <p>{{ row.address }}</p><p class="small muted">{{ row.description }}</p>
+                <p class="small">Owner: {{ row.owner_name }} · {{ row.owner_email }} · slug: {{ row.slug }}</p>
+                <p class="small"><strong>Menu preview:</strong>
+                    {% for item in row.menu_preview[:5] %}
+                        {{ item.name }} ({{ item.category }}, {{ item.price|money }}){% if not loop.last %}; {% endif %}
+                    {% endfor %}
+                    {% if row.menu_preview|length > 5 %}; and {{ row.menu_preview|length - 5 }} more{% endif %}
+                </p>
+            </div>
+            <div class="actions">
+                <form method="POST" action="{{ url_for('admin_review_intake', intake_id=row.id, action='approve') }}">
+                    {{ csrf_input() }}<button class="btn btn-accent" type="submit">Approve intake</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin_review_intake', intake_id=row.id, action='reject') }}">
+                    {{ csrf_input() }}<button class="btn btn-danger" type="submit">Reject</button>
+                </form>
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+{% else %}<p class="empty-state">No imported restaurants are awaiting review.</p>{% endif %}
+
+<div class="section-head"><h2>Account applications</h2></div>
+{% if applications %}
+    {% for application in applications %}
+    <article class="box">
+        <div class="row between">
+            <div>
+                <h3>{{ application.name }} · {{ application.requested_role|label }}</h3>
+                <p>{{ application.email }}</p>
+                {% if application.requested_role == 'restaurant_admin' %}
+                    <p>{{ application.restaurant_name }} · {{ application.restaurant_address }}</p>
+                    <p class="small muted">{% if application.restaurant_id %}Claiming an approved import{% else %}New restaurant application{% endif %}</p>
+                {% endif %}
+            </div>
+            <div class="actions">
+                <form method="POST" action="{{ url_for('admin_review_application', application_id=application.id, action='approve') }}">
+                    {{ csrf_input() }}<button class="btn btn-accent" type="submit">Approve account</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin_review_application', application_id=application.id, action='reject') }}">
+                    {{ csrf_input() }}<button class="btn btn-danger" type="submit">Reject</button>
+                </form>
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+{% else %}<p class="empty-state">No account applications are awaiting review.</p>{% endif %}
+
+<div class="section-head"><h2>Recent admin activity</h2></div>
+{% if audit_rows %}
+<div class="box">
+    <ul>
+    {% for entry in audit_rows %}
+        <li>{{ entry.created_at }} · {{ entry.actor_name }} · {{ entry.action }} · {{ entry.target_type }} {{ entry.target_id }} · {{ entry.details_json }}</li>
+    {% endfor %}
+    </ul>
+</div>
+{% else %}<p class="small muted">No administrative actions recorded yet.</p>{% endif %}
+{% endblock %}

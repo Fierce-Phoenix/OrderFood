@@ -56,6 +56,19 @@
     <button class="btn" disabled title="Available after the order is marked delivered">I received my order</button>
     <p class="small muted">This button works once the order is marked delivered.</p>
     {% endif %}
+    {% if o.status in ('delivered', 'completed') and d and d.delivery_agent_id %}
+        {% if detail.tip %}
+        <p class="notice" role="status">Thank you for tipping your delivery agent {{ detail.tip.amount|money }}.</p>
+        {% else %}
+        <h3>Tip your delivery agent</h3>
+        <form method="POST" action="{{ url_for('tip_delivery_agent', order_id=o.id) }}" class="field-inline">
+            {{ csrf_input() }}
+            <div><label for="tip-amount">Tip amount (paid from your wallet)</label>
+                <input id="tip-amount" name="amount" type="number" min="1" max="5000" step="1" value="50" required></div>
+            <button class="btn btn-accent" type="submit">Send tip</button>
+        </form>
+        {% endif %}
+    {% endif %}
     {% if o.status == 'completed' %}
         {% if detail.review %}
         <h3>Your feedback</h3>

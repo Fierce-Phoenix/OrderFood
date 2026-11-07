@@ -1,196 +1,128 @@
 {% extends "layout.html" %}
-{% block title %}Oops! Something went wrong - OrderFood{% endblock %}
+{% block title %}{{ code }} - OrderFood{% endblock %}
 {% block content %}
-<div class="meme-error-container">
-    <div class="meme-header">
-        <div class="error-code">{{ code }}</div>
-        <h1>{{ "Whoops!" if code == 404 else "Yikes!" if code == 500 else "Hmm..." }}</h1>
-        <p class="error-explanation">
-            {% if code == 404 %}
-                You've wandered into a digital wasteland. The page you're looking for probably decided to order food and leave the building.
-            {% elif code == 500 %}
-                Our server had a mid-life crisis. It's currently questioning its existence and forgot how to serve you food.
-            {% else %}
-                The internet gods are displeased. You've triggered a cosmic glitch in the food-ordering matrix.
-            {% endif %}
-        </p>
-        <p class="funny-note">While we fix this, why not challenge your boredom with some Snake?</p>
-    </div>
-
-    <div class="game-section">
-        <canvas id="snakeGame" width="400" height="400"></canvas>
+<section class="error-page box" aria-labelledby="error-title">
+    <p class="eyebrow">OrderFood</p>
+    <p class="error-code">{{ code }}</p>
+    <h1 id="error-title">
+        {% if code == 404 %}Page not found
+        {% elif code == 403 %}Access denied
+        {% elif code == 400 %}Request could not be completed
+        {% else %}Something went wrong{% endif %}
+    </h1>
+    <p class="error-explanation">{{ message }}</p>
+    <div class="error-game" aria-label="Snake game">
+        <canvas id="snakeGame" width="400" height="400" aria-label="Snake game board"></canvas>
         <div class="game-controls">
             <p>Score: <span id="score">0</span></p>
-            <p class="hint">Use Arrow Keys to move the snake!</p>
-            <button id="startBtn" class="btn btn-accent">Start Game</button>
+            <p class="game-hint">Use the arrow keys to move.</p>
+            <button id="startBtn" class="btn btn-accent" type="button">Start game</button>
         </div>
     </div>
-
     <div class="footer-links">
-        <a class="btn btn-outline" href="/">Go back to safety</a>
+        <a class="btn btn-accent" href="{{ url_for('home') }}">Back to restaurants</a>
     </div>
-</div>
-
-<style>
-    .meme-error-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 40px 20px;
-        font-family: 'Comic Sans MS', 'Chalkboard SE', cursive, sans-serif;
-    }
-    .meme-header {
-        margin-bottom: 30px;
-    }
-    .error-code {
-        font-size: 8rem;
-        font-weight: 900;
-        color: var(--accent-color, #ff4757);
-        line-height: 1;
-        margin-bottom: 10px;
-        text-shadow: 4px 4px 0px rgba(0,0,0,0.1);
-    }
-    .meme-header h1 {
-        font-size: 2.5rem;
-        margin-bottom: 15px;
-    }
-    .error-explanation {
-        font-size: 1.2rem;
-        max-width: 600px;
-        margin: 0 auto 20px;
-        color: #555;
-    }
-    .funny-note {
-        font-style: italic;
-        color: #888;
-        margin-bottom: 30px;
-    }
-    .game-section {
-        background: #2f3542;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        display: inline-block;
-    }
-    #snakeGame {
-        background: #000;
-        border: 4px solid #fff;
-        display: block;
-    }
-    .game-controls {
-        color: #fff;
-        margin-top: 15px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    .game-controls p {
-        margin: 0;
-        font-weight: bold;
-    }
-    .hint {
-        font-size: 0.9rem;
-        font-weight: normal !important;
-        opacity: 0.8;
-    }
-    .footer-links {
-        margin-top: 40px;
-    }
-</style>
-
+</section>
+{% endblock %}
+{% block extra_scripts %}
 <script>
-(function() {
+(() => {
     const canvas = document.getElementById('snakeGame');
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
-    const startBtn = document.getElementById('startBtn');
+    const context = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const startButton = document.getElementById('startBtn');
+    const cellSize = 20;
+    let snake;
+    let food;
+    let score;
+    let direction;
+    let gameInterval;
 
-    const box = 20;
-    let snake, food, score, direction, gameInterval;
-
-    function initGame() {
-        snake = [{x: 9 * box, y: 10 * box}];
+    function initializeGame() {
+        snake = [{ x: 9 * cellSize, y: 10 * cellSize }];
         food = {
-            x: Math.floor(Math.random() * 19 + 1) * box,
-            y: Math.floor(Math.random() * 19 + 1) * box
+            x: Math.floor(Math.random() * 19 + 1) * cellSize,
+            y: Math.floor(Math.random() * 19 + 1) * cellSize
         };
         score = 0;
-        direction = "RIGHT";
-        scoreEl.innerText = score;
+        direction = 'RIGHT';
+        scoreElement.textContent = score;
     }
 
-    document.addEventListener("keydown", (e) => {
-        if (e.keyCode == 37 && direction != "RIGHT") direction = "LEFT";
-        else if (e.keyCode == 38 && direction != "DOWN") direction = "UP";
-        else if (e.keyCode == 39 && direction != "LEFT") direction = "RIGHT";
-        else if (e.keyCode == 40 && direction != "UP") direction = "DOWN";
-    });
+    function collides(head, body) {
+        return body.some(segment => segment.x === head.x && segment.y === head.y);
+    }
 
     function draw() {
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = '#171717';
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
-        for (let i = 0; i < snake.length; i++) {
-            ctx.fillStyle = (i == 0) ? "#2ecc71" : "#27ae60";
-            ctx.fillRect(snake[i].x, snake[i].y, box, box);
-            ctx.strokeStyle = "black";
-            ctx.strokeRect(snake[i].x, snake[i].y, box, box);
-        }
+        snake.forEach((segment, index) => {
+            context.fillStyle = index === 0 ? '#1455a3' : '#6d99cf';
+            context.fillRect(segment.x, segment.y, cellSize, cellSize);
+            context.strokeStyle = '#171717';
+            context.strokeRect(segment.x, segment.y, cellSize, cellSize);
+        });
 
-        ctx.fillStyle = "#e74c3c";
-        ctx.fillRect(food.x, food.y, box, box);
+        context.fillStyle = '#c7352b';
+        context.fillRect(food.x, food.y, cellSize, cellSize);
 
-        let snakeX = snake[0].x;
-        let snakeY = snake[0].y;
+        let x = snake[0].x;
+        let y = snake[0].y;
+        if (direction === 'LEFT') x -= cellSize;
+        if (direction === 'UP') y -= cellSize;
+        if (direction === 'RIGHT') x += cellSize;
+        if (direction === 'DOWN') y += cellSize;
 
-        if (direction == "LEFT") snakeX -= box;
-        if (direction == "UP") snakeY -= box;
-        if (direction == "RIGHT") snakeX += box;
-        if (direction == "DOWN") snakeY += box;
-
-        if (snakeX == food.x && snakeY == food.y) {
-            score++;
-            scoreEl.innerText = score;
+        if (x === food.x && y === food.y) {
+            score += 1;
+            scoreElement.textContent = score;
             food = {
-                x: Math.floor(Math.random() * 19 + 1) * box,
-                y: Math.floor(Math.random() * 19 + 1) * box
+                x: Math.floor(Math.random() * 19 + 1) * cellSize,
+                y: Math.floor(Math.random() * 19 + 1) * cellSize
             };
         } else {
             snake.pop();
         }
 
-        let newHead = {x: snakeX, y: snakeY};
-
-        if (snakeX < 0 || snakeX >= canvas.width || snakeY < 0 || snakeY >= canvas.height || collision(newHead, snake)) {
-            clearInterval(gameInterval);
-            ctx.fillStyle = "white";
-            ctx.font = "30px Arial";
-            ctx.fillText("GAME OVER!", canvas.width/4, canvas.height/2);
-            startBtn.style.display = "block";
-            startBtn.innerText = "Try Again";
+        const head = { x, y };
+        if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height || collides(head, snake)) {
+            window.clearInterval(gameInterval);
+            gameInterval = null;
+            context.fillStyle = '#fff';
+            context.font = '30px Arial';
+            context.fillText('GAME OVER!', canvas.width / 4, canvas.height / 2);
+            startButton.hidden = false;
+            startButton.textContent = 'Try again';
             return;
         }
 
-        snake.unshift(newHead);
+        snake.unshift(head);
     }
 
-    function collision(head, array) {
-        for (let i = 0; i < array.length; i++) {
-            if (head.x == array[i].x && head.y == array[i].y) return true;
+    document.addEventListener('keydown', event => {
+        if (!gameInterval) return;
+        const nextDirection = {
+            ArrowLeft: 'LEFT',
+            ArrowUp: 'UP',
+            ArrowRight: 'RIGHT',
+            ArrowDown: 'DOWN'
+        }[event.key];
+        const reverse = { LEFT: 'RIGHT', UP: 'DOWN', RIGHT: 'LEFT', DOWN: 'UP' };
+        if (nextDirection && nextDirection !== reverse[direction]) {
+            event.preventDefault();
+            direction = nextDirection;
         }
-        return false;
-    }
-
-    startBtn.addEventListener('click', () => {
-        initGame();
-        startBtn.style.display = "none";
-        if (gameInterval) clearInterval(gameInterval);
-        gameInterval = setInterval(draw, 100);
     });
 
-    initGame();
+    startButton.addEventListener('click', () => {
+        initializeGame();
+        startButton.hidden = true;
+        window.clearInterval(gameInterval);
+        gameInterval = window.setInterval(draw, 100);
+    });
+
+    initializeGame();
     draw();
 })();
 </script>

@@ -9,8 +9,8 @@ APIs used (enable them in Google Cloud Console for your key):
   * Geocoding API         - reverse-geocode a dropped pin          (browser + one-off seeding)
   * Routes API            - travel time/distance + route polyline  (server)
 
-Without a key the app still works: travel times fall back to a straight-line estimate and the
-location picker falls back to a list of Mumbai areas. Nothing here ever raises into a request.
+Without a key the app still works in read-only browsing mode. Travel times fall back to a
+straight-line estimate when coordinates are available. Nothing here ever raises into a request.
 """
 
 import json
@@ -28,35 +28,6 @@ GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
 ETA_TTL = 600            # seconds a restaurant->customer estimate is reused
 ROAD_FACTOR = 1.35       # straight-line -> road distance, for the offline fallback
 FALLBACK_KMH = 22.0      # average urban speed, for the offline fallback
-
-def _load_area_data():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'service_areas.json')
-    try:
-        with open(path, encoding='utf-8') as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f'Could not load service area configuration: {path}') from exc
-    try:
-        areas = [(row['name'], float(row['lat']), float(row['lon'])) for row in data['areas']]
-        restaurant_rows = data['restaurant_areas']
-        restaurant_areas = [
-            (row['name'], float(row['lat']), float(row['lon'])) for row in restaurant_rows
-        ]
-        restaurant_area_weights = [int(row['seed_weight']) for row in restaurant_rows]
-    except (KeyError, TypeError, ValueError) as exc:
-        raise RuntimeError(f'Service area configuration has an invalid shape: {path}') from exc
-    coordinates = [(area[1], area[2]) for area in areas + restaurant_areas]
-    valid_coordinates = all(
-        math.isfinite(lat) and math.isfinite(lon) and abs(lat) <= 90 and abs(lon) <= 180
-        for lat, lon in coordinates)
-    if (not areas or not restaurant_areas or any(weight < 0 for weight in restaurant_area_weights) or
-            not any(restaurant_area_weights) or not valid_coordinates):
-        raise RuntimeError(f'Service area configuration must contain valid areas: {path}')
-    return areas, restaurant_areas, restaurant_area_weights
-
-
-AREAS, RESTAURANT_AREAS, RESTAURANT_AREA_WEIGHTS = _load_area_data()
-
 
 def load_dotenv(path):
     """Tiny .env reader (KEY=VALUE per line). Real environment variables win."""
@@ -138,7 +109,7 @@ class GoogleMapsService:
         # Put an unrestricted/IP-restricted key in GOOGLE_MAPS_SERVER_KEY if you lock the browser key down.
         self.server_key = os.environ.get('GOOGLE_MAPS_SERVER_KEY', '').strip() or self.browser_key
         self.map_id = os.environ.get('GOOGLE_MAPS_MAP_ID', '').strip() or 'DEMO_MAP_ID'
-        self.region = os.environ.get('GOOGLE_MAPS_REGION', 'in').strip().lower()
+        self.region = os.environ.get('GOOGLE_MAPS_REGION', '').strip().lower()
         self.travel_mode = os.environ.get('GOOGLE_TRAVEL_MODE', 'DRIVE').strip().upper()   # or TWO_WHEELER
         self.offline = os.environ.get('ORDERFOOD_MAPS_OFFLINE') == '1'
         self.last_error = None
@@ -279,12 +250,11 @@ class GoogleMapsService:
 
     # ---- seeding helpers -------------------------------------------------------------------
     @staticmethod
-    def random_spot(area=None, rng=None):
-        """A random point inside a neighbourhood: (label, lat, lon)."""
+    def random_spot(rng=None):
+        """A plausible point for demo data: (label, lat, lon)."""
         rng = rng or random
-        name, lat, lon = area or rng.choice(AREAS)
-        label = name if ',' in name else f'{name}, Mumbai'
-        return label, round(lat + rng.uniform(-0.005, 0.005), 6), round(lon + rng.uniform(-0.005, 0.005), 6)
+        lat, lon = 19.076, 72.8777
+        return 'Mumbai', round(lat + rng.uniform(-0.025, 0.025), 6), round(lon + rng.uniform(-0.025, 0.025), 6)
 
     def reverse_geocode(self, lat, lon):
         """Best-effort pretty address for a seeded point. Gives up after the first failure."""
@@ -299,13 +269,6 @@ class GoogleMapsService:
             self._geocode_broken = True
             self.last_error = str(exc)
             return None
-
-    @staticmethod
-    def area_by_name(name):
-        for area in AREAS:
-            if area[0] == name:
-                return area
-        return None
 
     @staticmethod
     def maps_url(lat, lon):

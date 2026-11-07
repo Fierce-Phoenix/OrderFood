@@ -1,13 +1,19 @@
 """End-to-end tests. Run:  python -m unittest -v test_app"""
 import atexit
+import csv
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 import importlib
+import io
 import json
 import os
 import re
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -73,7 +79,9 @@ class Client:
     def login(self, email, password):
         r = self.post('/login', {'email': email, 'password': password})
         assert r.status_code == 200
-        if 'Where should we deliver' in r.get_data(as_text=True):      # customers confirm a location first
+        with self.c.session_transaction() as browser_session:
+            is_customer = browser_session.get('role') == 'customer'
+        if is_customer:
             r = self.post('/location', {'lat': str(HOME[0]), 'lon': str(HOME[1]), 'address': 'Flat 4'})
             assert r.status_code == 200
         return r
@@ -118,6 +126,13 @@ class OrderFoodTests(unittest.TestCase):
         client.login(email, password)
         return client
 
+    def create_platform_admin(self):
+        user_id = app_module.create_platform_admin(
+            'platform-admin@example.com', 'Platform Admin', 'platform-admin-password-123')
+        client = Client()
+        client.login('platform-admin@example.com', 'platform-admin-password-123')
+        return client, user_id
+
     def add(self, item_id, n=1):
         for _ in range(n):
             self.cust.post('/add_to_cart', {'item_id': item_id})
@@ -132,6 +147,34 @@ class OrderFoodTests(unittest.TestCase):
         with patch.object(app_module.razorpay, 'Client', return_value=fake):
             response = customer.c.post(
                 '/api/create-order', json={'token': token, 'address': 'Flat 4'},
+                headers={'X-CSRFToken': customer.token()})
+        return response, fake
+
+    def verify_razorpay_payment(self, payload, customer=None, payment=None, captured=None):
+        customer = customer or self.cust
+        with customer.c.session_transaction() as browser_session:
+            intent = browser_session.get('razorpay_intent')
+            amount = intent['amount'] if intent else 18000
+        fake = Mock()
+        fake.payment.fetch.return_value = payment or {
+            'id': payload['razorpay_payment_id'],
+            'order_id': payload['razorpay_order_id'],
+            'amount': amount,
+            'currency': 'INR',
+            'status': 'captured',
+            'captured': True,
+        }
+        fake.payment.capture.return_value = captured or {
+            'id': payload['razorpay_payment_id'],
+            'order_id': payload['razorpay_order_id'],
+            'amount': amount,
+            'currency': 'INR',
+            'status': 'captured',
+            'captured': True,
+        }
+        with patch.object(app_module.razorpay, 'Client', return_value=fake):
+            response = customer.c.post(
+                '/api/verify-payment', json=payload,
                 headers={'X-CSRFToken': customer.token()})
         return response, fake
 
@@ -177,7 +220,7 @@ class OrderFoodTests(unittest.TestCase):
         self.assertIn('not available for your account type', text(r))
         r = self.rest.get('/')
         self.assertIn('Dashboard', text(r))
-        self.assertIn('not available', text(r))
+        self.assertIn('Read-only browsing', text(r))
 
     def test_home_navigation_is_available_without_svg_for_all_roles(self):
         guest = Client()
@@ -203,10 +246,13 @@ class OrderFoodTests(unittest.TestCase):
         self.assertIn('₹180', text(r))
 
     # --- ordering ----------------------------------------------------------
-    def test_far_restaurant_cannot_be_ordered(self):
-        r = self.cust.post('/add_to_cart', {'item_id': 16})       # Coastal Kitchen is outside the 30-minute radius
-        self.assertIn('too far', text(r))
-        self.assertIn('Your cart is empty', text(self.cust.get('/cart')))
+    def test_restaurant_far_outside_demo_region_can_be_ordered(self):
+        c = db()
+        c.execute("UPDATE restaurants SET lat = 35.6762, lon = 139.6503 WHERE name = 'Coastal Kitchen'")
+        c.commit()
+        r = self.cust.post('/add_to_cart', {'item_id': 16})
+        self.assertIn('added to cart', text(r))
+        self.assertIn('Fish Curry Rice', text(self.cust.get('/cart')))
 
     def test_sold_out_item_rejected_and_replaceable(self):
         r = self.cust.post('/add_to_cart', {'item_id': 4})          # Chole Bhature, sold out
@@ -268,16 +314,19 @@ class OrderFoodTests(unittest.TestCase):
 
         payload['razorpay_signature'] = hmac.new(
             b'unit-test-secret', b'order_test123|pay_test456', hashlib.sha256).hexdigest()
-        verified = self.cust.c.post('/api/verify-payment', json=payload, headers=headers)
+        verified, gateway = self.verify_razorpay_payment(payload)
         self.assertEqual(verified.status_code, 200)
         self.assertTrue(verified.get_json()['success'])
+        gateway.payment.fetch.assert_called_once_with('pay_test456')
+        gateway.payment.capture.assert_not_called()
         self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 2)
         self.assertEqual(db().execute('SELECT COUNT(*) FROM transactions '
                                       'WHERE payment_method = ?', ('razorpay',)).fetchone()[0], 2)
         self.assertAlmostEqual(self.balance('1'), 650)
 
-        duplicate = self.cust.c.post('/api/verify-payment', json=payload, headers=headers)
+        duplicate, duplicate_gateway = self.verify_razorpay_payment(payload)
         self.assertEqual(duplicate.status_code, 200)
+        duplicate_gateway.payment.fetch.assert_not_called()
         self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 2)
 
         order_id = db().execute('SELECT MIN(id) FROM orders').fetchone()[0]
@@ -372,6 +421,103 @@ class OrderFoodTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400)
         self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 0)
 
+    def test_razorpay_captures_authorized_payment_before_creating_orders(self):
+        self.add(1)
+        self.razorpay_order()
+        payload = {
+            'razorpay_order_id': 'order_test123',
+            'razorpay_payment_id': 'pay_test456',
+            'razorpay_signature': hmac.new(
+                b'unit-test-secret', b'order_test123|pay_test456', hashlib.sha256).hexdigest(),
+        }
+        authorized = {
+            'id': 'pay_test456', 'order_id': 'order_test123', 'amount': 18000,
+            'currency': 'INR', 'status': 'authorized', 'captured': False,
+        }
+        captured = {**authorized, 'status': 'captured', 'captured': True}
+
+        response, gateway = self.verify_razorpay_payment(
+            payload, payment=authorized, captured=captured)
+
+        self.assertEqual(response.status_code, 200)
+        gateway.payment.fetch.assert_called_once_with('pay_test456')
+        gateway.payment.capture.assert_called_once_with('pay_test456', 18000)
+        self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 1)
+
+    def test_razorpay_rejects_mismatched_uncaptured_and_failed_payments(self):
+        self.add(1)
+        self.razorpay_order()
+        payload = {
+            'razorpay_order_id': 'order_test123',
+            'razorpay_payment_id': 'pay_test456',
+            'razorpay_signature': hmac.new(
+                b'unit-test-secret', b'order_test123|pay_test456', hashlib.sha256).hexdigest(),
+        }
+        mismatched = {
+            'id': 'pay_test456', 'order_id': 'order_other', 'amount': 18000,
+            'currency': 'INR', 'status': 'captured', 'captured': True,
+        }
+        response, gateway = self.verify_razorpay_payment(payload, payment=mismatched)
+        self.assertEqual(response.status_code, 400)
+        gateway.payment.capture.assert_not_called()
+        self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 0)
+
+        failed = {**mismatched, 'order_id': 'order_test123', 'status': 'failed',
+                  'captured': False}
+        response, gateway = self.verify_razorpay_payment(payload, payment=failed)
+        self.assertEqual(response.status_code, 409)
+        gateway.payment.capture.assert_not_called()
+        self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 0)
+
+        authorized = {**failed, 'status': 'authorized'}
+        gateway = Mock()
+        gateway.payment.fetch.return_value = authorized
+        gateway.payment.capture.return_value = authorized
+        with patch.object(app_module.razorpay, 'Client', return_value=gateway):
+            response = self.cust.c.post(
+                '/api/verify-payment', json=payload,
+                headers={'X-CSRFToken': self.cust.token()})
+        self.assertEqual(response.status_code, 502)
+        gateway.payment.capture.assert_called_once_with('pay_test456', 18000)
+        self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 0)
+
+    def test_razorpay_gateway_lookup_and_capture_failures_do_not_create_orders(self):
+        self.add(1)
+        self.razorpay_order()
+        payload = {
+            'razorpay_order_id': 'order_test123',
+            'razorpay_payment_id': 'pay_test456',
+            'razorpay_signature': hmac.new(
+                b'unit-test-secret', b'order_test123|pay_test456', hashlib.sha256).hexdigest(),
+        }
+        gateway = Mock()
+        gateway.payment.fetch.side_effect = app_module.razorpay.errors.ServerError(
+            'gateway unavailable')
+        with patch.object(app_module.razorpay, 'Client', return_value=gateway):
+            response = self.cust.c.post(
+                '/api/verify-payment', json=payload,
+                headers={'X-CSRFToken': self.cust.token()})
+        self.assertEqual(response.status_code, 502)
+        gateway.payment.capture.assert_not_called()
+        self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 0)
+
+        with self.cust.c.session_transaction() as browser_session:
+            amount = browser_session['razorpay_intent']['amount']
+        gateway = Mock()
+        gateway.payment.fetch.return_value = {
+            'id': 'pay_test456', 'order_id': 'order_test123', 'amount': amount,
+            'currency': 'INR', 'status': 'authorized', 'captured': False,
+        }
+        gateway.payment.capture.side_effect = app_module.razorpay.errors.ServerError(
+            'gateway unavailable')
+        with patch.object(app_module.razorpay, 'Client', return_value=gateway):
+            response = self.cust.c.post(
+                '/api/verify-payment', json=payload,
+                headers={'X-CSRFToken': self.cust.token()})
+        self.assertEqual(response.status_code, 502)
+        gateway.payment.capture.assert_called_once_with('pay_test456', amount)
+        self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 0)
+
     def test_razorpay_cart_change_after_payment_start_is_rejected(self):
         self.add(1)
         self.razorpay_order(amount=18000)
@@ -382,11 +528,10 @@ class OrderFoodTests(unittest.TestCase):
             'razorpay_signature': hmac.new(
                 b'unit-test-secret', b'order_test123|pay_test456', hashlib.sha256).hexdigest(),
         }
-        response = self.cust.c.post(
-            '/api/verify-payment', json=payload,
-            headers={'X-CSRFToken': self.cust.token()})
+        response, gateway = self.verify_razorpay_payment(payload)
         self.assertEqual(response.status_code, 409)
         self.assertIn('cart changed', response.get_json()['error'])
+        gateway.payment.fetch.assert_not_called()
         self.assertEqual(db().execute('SELECT COUNT(*) FROM orders').fetchone()[0], 0)
 
     def test_razorpay_create_order_is_idempotent_for_same_checkout_intent(self):
@@ -469,6 +614,15 @@ class OrderFoodTests(unittest.TestCase):
         self.assertEqual(db().execute('SELECT status FROM orders').fetchone()[0], 'delivered')
         self.assertAlmostEqual(self.balance('3'), 40)             # agent default: per order
         self.assertAlmostEqual(self.balance('5'), total)          # restaurant owner paid on delivery
+
+        balance_before_tip = self.balance('1')
+        self.assertIn('Tip your delivery agent', text(self.cust.get(f'/orders?order={oid}')))
+        r = self.cust.post(f'/orders/{oid}/tip', {'amount': 25})
+        self.assertIn('tip was sent', text(r))
+        self.assertAlmostEqual(self.balance('1'), balance_before_tip - 25)
+        self.assertAlmostEqual(self.balance('3'), 65)
+        self.assertIn('already tipped', text(self.cust.post(f'/orders/{oid}/tip', {'amount': 25})))
+        self.assertAlmostEqual(self.balance('3'), 65)
 
         # only now the customer may confirm; another customer cannot
         self.assertIn('Did you receive your last order', text(self.cust.get('/')))
@@ -559,9 +713,7 @@ class OrderFoodTests(unittest.TestCase):
             'razorpay_signature': hmac.new(
                 b'unit-test-secret', b'order_test123|pay_test456', hashlib.sha256).hexdigest(),
         }
-        verified = self.cust.c.post(
-            '/api/verify-payment', json=payment_payload,
-            headers={'X-CSRFToken': self.cust.token()})
+        verified, _ = self.verify_razorpay_payment(payment_payload)
         self.assertEqual(verified.status_code, 200)
         order_id = verified.get_json()['order_ids'][0]
 
@@ -720,7 +872,8 @@ class OrderFoodTests(unittest.TestCase):
             'email': 'partner@example.com',
             'account_type': 'restaurant_admin',
             'restaurant_name': 'New Kitchen',
-            'restaurant_address': '10 Main Street',
+            'restaurant_address': '10 Main Street, London, UK',
+            'staff_password': 'restaurant-password-123',
         })
         self.assertIn('must verify and provision', text(response))
         connection = db()
@@ -733,13 +886,15 @@ class OrderFoodTests(unittest.TestCase):
         connection.close()
         self.assertEqual(
             tuple(application),
-            ('partner@example.com', 'restaurant_admin', 'New Kitchen', '10 Main Street', 'pending'))
+            ('partner@example.com', 'restaurant_admin', 'New Kitchen',
+             '10 Main Street, London, UK', 'pending'))
         self.assertIsNone(user)
 
         duplicate = client.post('/register', {
             'name': 'Restaurant Applicant',
             'email': 'partner@example.com',
             'account_type': 'delivery_agent',
+            'staff_password': 'another-password-123',
         })
         self.assertEqual(duplicate.status_code, 400)
 
@@ -747,6 +902,7 @@ class OrderFoodTests(unittest.TestCase):
             'name': 'Missing Details',
             'email': 'incomplete@example.com',
             'account_type': 'restaurant_admin',
+            'staff_password': 'restaurant-password-123',
         })
         self.assertEqual(invalid_restaurant.status_code, 400)
 
@@ -754,6 +910,7 @@ class OrderFoodTests(unittest.TestCase):
             'name': 'Driver Applicant',
             'email': 'driver@example.com',
             'account_type': 'delivery_agent',
+            'staff_password': 'driver-password-123',
         })
         self.assertIn('must verify and provision', text(agent_application))
         connection = db()
@@ -765,6 +922,159 @@ class OrderFoodTests(unittest.TestCase):
         connection.close()
         self.assertEqual(tuple(agent_request), ('delivery_agent', 'pending'))
         self.assertIsNone(agent_user)
+
+    def test_platform_admin_approves_partner_and_audits_provisioning(self):
+        admin, admin_id = self.create_platform_admin()
+        with self.assertRaisesRegex(ValueError, 'already belongs to an account'):
+            app_module.create_platform_admin(
+                'alice.customer@example.com', 'Should Not Escalate', 'a-very-long-password-123')
+        connection = db()
+        admin_creation = connection.execute(
+            "SELECT action FROM admin_audit_log WHERE actor_id = ? AND action = 'platform_admin_create'",
+            (admin_id,)).fetchone()
+        connection.close()
+        self.assertIsNotNone(admin_creation)
+        denied = self.cust.get('/admin/restaurants')
+        self.assertIn('not available for your account type', text(denied))
+        self.assertEqual(admin.post('/admin/restaurants/import', csrf=False).status_code, 400)
+
+        application_client = Client()
+        application = application_client.post('/register', {
+            'name': 'New Partner',
+            'email': 'new-partner@example.com',
+            'account_type': 'restaurant_admin',
+            'restaurant_name': 'Harbor Kitchen',
+            'restaurant_address': '12 Harbor Road',
+            'staff_password': 'partner-password-123',
+        })
+        self.assertIn('must verify and provision', text(application))
+
+        page = text(admin.get('/admin/restaurants'))
+        self.assertIn('new-partner@example.com', page)
+        connection = db()
+        row = connection.execute(
+            'SELECT id, password_hash FROM account_applications WHERE email = ?',
+            ('new-partner@example.com',)).fetchone()
+        connection.close()
+        self.assertTrue(row['password_hash'].startswith(('scrypt:', 'pbkdf2:')))
+        response = admin.post(f"/admin/applications/{row['id']}/approve")
+        self.assertIn('approved', text(response))
+
+        connection = db()
+        user = connection.execute(
+            "SELECT id, role, restaurant_id, password FROM users WHERE email = ?",
+            ('new-partner@example.com',)).fetchone()
+        restaurant = connection.execute(
+            'SELECT slug, name, is_active FROM restaurants WHERE id = ?', (user['restaurant_id'],)
+        ).fetchone()
+        audit = connection.execute(
+            "SELECT action FROM admin_audit_log WHERE actor_id = ? AND target_type = 'account_application'",
+            (admin_id,)).fetchone()
+        stored_application_hash = connection.execute(
+            'SELECT password_hash FROM account_applications WHERE id = ?', (row['id'],)
+        ).fetchone()[0]
+        connection.close()
+        self.assertEqual(user['role'], 'restaurant_admin')
+        self.assertNotEqual(user['password'], 'partner-password-123')
+        self.assertIsNone(stored_application_hash)
+        self.assertEqual(tuple(restaurant), ('harbor-kitchen', 'Harbor Kitchen', 1))
+        self.assertEqual(audit['action'], 'application_approve')
+        owner = Client()
+        owner.login('new-partner@example.com', 'partner-password-123')
+        self.assertEqual(owner.get('/dashboard/restaurant').status_code, 200)
+
+    def test_bulk_import_is_validated_idempotent_and_requires_owner_claim(self):
+        admin, _admin_id = self.create_platform_admin()
+        connection = db()
+        original_restaurant_count = connection.execute('SELECT COUNT(*) FROM restaurants').fetchone()[0]
+        connection.close()
+        csv_buffer = io.StringIO(newline='')
+        writer = csv.writer(csv_buffer)
+        writer.writerow([
+            'restaurant_name', 'restaurant_slug', 'address', 'description',
+            'owner_name', 'owner_email', 'menu_json'])
+        for number in range(100):
+            menu_json = json.dumps([{
+                'name': f'Dish {number}', 'description': 'Fresh', 'price': 150,
+                'category': 'Main Course', 'available': True,
+            }])
+            writer.writerow([
+                f'Restaurant {number}', f'restaurant-{number}', f'{number} Main Street',
+                'Fresh food', f'Owner {number}', f'owner{number}@example.com', menu_json,
+            ])
+        csv_file = csv_buffer.getvalue()
+        response = admin.post('/admin/restaurants/import', {
+            'csv_file': (io.BytesIO(csv_file.encode()), 'restaurants.csv')})
+        self.assertIn('staged 100 restaurant(s)', text(response))
+        response = admin.post('/admin/restaurants/import', {
+            'csv_file': (io.BytesIO(csv_file.encode()), 'restaurants.csv')})
+        self.assertIn('0 restaurant(s); 100 idempotent', text(response))
+        connection = db()
+        self.assertEqual(connection.execute('SELECT COUNT(*) FROM restaurant_intake').fetchone()[0], 100)
+        self.assertEqual(connection.execute('SELECT COUNT(*) FROM restaurants').fetchone()[0],
+                         original_restaurant_count)
+        connection.close()
+
+        bad_buffer = io.StringIO(newline='')
+        writer = csv.writer(bad_buffer)
+        writer.writerow([
+            'restaurant_name', 'restaurant_slug', 'address', 'description',
+            'owner_name', 'owner_email', 'menu_json'])
+        writer.writerow([
+            'Bad Restaurant', 'bad-slug', 'Address', 'Description', 'Owner',
+            'valid@example.com', json.dumps([{'name': 'Dish', 'price': 10, 'category': 'Unknown'}]),
+        ])
+        response = admin.post('/admin/restaurants/import', {
+            'csv_file': (io.BytesIO(bad_buffer.getvalue().encode()), 'invalid.csv')})
+        self.assertIn('invalid menu item', text(response))
+        connection = db()
+        self.assertEqual(connection.execute('SELECT COUNT(*) FROM restaurant_intake').fetchone()[0], 100)
+        connection.close()
+
+        connection = db()
+        intake_ids = [str(row[0]) for row in connection.execute(
+            "SELECT id FROM restaurant_intake ORDER BY id")]
+        connection.close()
+        response = admin.post('/admin/restaurants/intake/bulk', {
+            'intake_ids': intake_ids, 'action': 'approve'})
+        self.assertIn('100 restaurant intake(s) approved', text(response))
+        connection = db()
+        restaurant = connection.execute(
+            "SELECT id, is_active FROM restaurants WHERE slug = 'restaurant-0'").fetchone()
+        inactive_count = connection.execute(
+            "SELECT COUNT(*) FROM restaurants WHERE slug LIKE 'restaurant-%' AND is_active = 0"
+        ).fetchone()[0]
+        imported_menu_count = connection.execute(
+            'SELECT COUNT(*) FROM restaurant_intake_menu_items').fetchone()[0]
+        connection.close()
+        self.assertEqual(restaurant['is_active'], 0)
+        self.assertEqual(inactive_count, 100)
+        self.assertEqual(imported_menu_count, 100)
+
+        owner = Client()
+        owner.post('/register', {
+            'name': 'Owner 0',
+            'email': 'owner0@example.com',
+            'account_type': 'restaurant_admin',
+            'restaurant_name': 'ignored by imported listing',
+            'restaurant_address': 'ignored by imported listing',
+            'staff_password': 'owner-password-123',
+        })
+        connection = db()
+        application = connection.execute(
+            "SELECT id, restaurant_id FROM account_applications WHERE email = 'owner0@example.com'"
+        ).fetchone()
+        connection.close()
+        self.assertEqual(application['restaurant_id'], restaurant['id'])
+        admin.post(f"/admin/applications/{application['id']}/approve")
+        connection = db()
+        self.assertEqual(connection.execute(
+            "SELECT is_active FROM restaurants WHERE id = ?", (restaurant['id'],)).fetchone()[0], 1)
+        self.assertEqual(connection.execute(
+            'SELECT COUNT(*) FROM menu_items WHERE restaurant_id = ?', (restaurant['id'],)
+        ).fetchone()[0], 1)
+        connection.close()
+        owner.login('owner0@example.com', 'owner-password-123')
 
     def test_wallet_rejects_invalid_and_insufficient_operations(self):
         initial_balance = self.balance('1')
@@ -904,9 +1214,139 @@ class OrderFoodTests(unittest.TestCase):
                 'SELECT slug FROM restaurants WHERE name = ?', ('Legacy Kitchen',)).fetchone()
             category = connection.execute(
                 'SELECT category FROM menu_items WHERE name = ?', ('Legacy item',)).fetchone()
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], app_module.SCHEMA_VERSION)
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0], 4)
             connection.close()
             self.assertEqual(restaurant[0], 'legacy-kitchen')
             self.assertEqual(category[0], 'Main Course')
+
+    def test_database_connections_use_wal_integrity_settings_and_indexes(self):
+        connection = app_module.connect_database()
+        self.assertEqual(connection.execute('PRAGMA journal_mode').fetchone()[0].lower(), 'wal')
+        self.assertEqual(connection.execute('PRAGMA foreign_keys').fetchone()[0], 1)
+        self.assertEqual(connection.execute('PRAGMA synchronous').fetchone()[0], 1)
+        self.assertEqual(connection.execute('PRAGMA trusted_schema').fetchone()[0], 0)
+        self.assertEqual(connection.execute('PRAGMA busy_timeout').fetchone()[0],
+                         app.config['DATABASE_BUSY_TIMEOUT_MS'])
+        self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], app_module.SCHEMA_VERSION)
+        index_names = {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'")}
+        self.assertIn('idx_orders_user_id_id', index_names)
+        self.assertIn('idx_notifications_user_unread', index_names)
+        connection.close()
+        health = app_module.database_health()
+        self.assertEqual(health['integrity'], ['ok'])
+        self.assertEqual(health['foreign_key_violations'], [])
+
+    def test_database_migration_rolls_back_on_invalid_legacy_wallet_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'atomic.db')
+            wallet_path = os.path.join(directory, 'wallet.json')
+            with open(wallet_path, 'w', encoding='utf-8') as wallet_file:
+                wallet_file.write('{"invalid":')
+            with patch.dict(app_module.app.config, {
+                    'DATABASE': path, 'LEGACY_WALLET_FILE': wallet_path}):
+                with patch.object(app_module.wallet_service, 'database', path):
+                    with self.assertRaises(RuntimeError):
+                        app_module.init_database()
+            connection = sqlite3.connect(path)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 0)
+            self.assertIsNone(connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'restaurants'").fetchone())
+            connection.close()
+
+    def test_concurrent_database_initialization_applies_migrations_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'concurrent.db')
+            barrier = threading.Barrier(2)
+
+            def initialize():
+                connection = app_module.connect_database(path)
+                try:
+                    barrier.wait()
+                    return app_module._initialize_database(connection)
+                except Exception:
+                    connection.rollback()
+                    raise
+                finally:
+                    connection.close()
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(lambda _index: initialize(), range(2)))
+            self.assertEqual(len(results), 2)
+
+            connection = sqlite3.connect(path)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],
+                             app_module.SCHEMA_VERSION)
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0], 4)
+            connection.close()
+
+    def test_database_backup_is_valid_private_and_never_overwrites(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = os.path.join(directory, 'backup.sqlite3')
+            app_module.backup_database(destination)
+            health = app_module.database_health(destination)
+            self.assertEqual(health['integrity'], ['ok'])
+            self.assertEqual(health['schema_version'], app_module.SCHEMA_VERSION)
+            if os.name == 'posix':
+                self.assertEqual(os.stat(destination).st_mode & 0o777, 0o600)
+            with self.assertRaises(FileExistsError):
+                app_module.backup_database(destination)
+
+    def test_maintenance_commands_preserve_existing_schema_and_create_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'legacy.db')
+            destination = os.path.join(directory, 'legacy-backup.db')
+            connection = sqlite3.connect(path)
+            connection.execute('CREATE TABLE legacy_record (value TEXT)')
+            connection.execute("INSERT INTO legacy_record VALUES ('preserved')")
+            connection.execute('PRAGMA user_version = 1')
+            connection.commit()
+            connection.close()
+
+            environment = os.environ.copy()
+            environment.update({
+                'ORDERFOOD_DB': path,
+                'ORDERFOOD_SECRET_KEY': 'maintenance-test-key',
+                'ORDERFOOD_ENV': 'development',
+                'ORDERFOOD_MAPS_OFFLINE': '1',
+            })
+            app_path = os.path.join(app_module.BASE_DIR, 'orderfood_app.py')
+            checked = subprocess.run(
+                [sys.executable, app_path, 'db-check'], env=environment,
+                capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(checked.stdout)['schema_version'], 1)
+
+            backed_up = subprocess.run(
+                [sys.executable, app_path, 'db-backup', destination], env=environment,
+                capture_output=True, text=True, check=True)
+            self.assertEqual(os.path.realpath(backed_up.stdout.strip()), os.path.realpath(destination))
+            for database_path in (path, destination):
+                connection = sqlite3.connect(database_path)
+                self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 1)
+                self.assertEqual(connection.execute('SELECT value FROM legacy_record').fetchone()[0],
+                                 'preserved')
+                connection.close()
+
+    def test_json_configuration_rejects_duplicate_keys_and_invalid_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'catalog.json')
+            with open(path, 'w', encoding='utf-8') as config:
+                config.write('{"schema_version": 1, "schema_version": 1}')
+            with self.assertRaises(RuntimeError):
+                app_module.load_catalog(path)
+
+            with open(path, 'w', encoding='utf-8') as config:
+                config.write('{"schema_version": true}')
+            with self.assertRaises(RuntimeError):
+                app_module.load_catalog(path)
+
+            invalid = json.loads(json.dumps(app_module.CATALOG))
+            invalid['restaurants'][0]['menu'][0]['price'] = float('nan')
+            with open(path, 'w', encoding='utf-8') as config:
+                json.dump(invalid, config)
+            with self.assertRaises(RuntimeError):
+                app_module.load_catalog(path)
 
     def test_production_database_does_not_seed_demo_accounts_or_wallet_credit(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -975,7 +1415,7 @@ class OrderFoodTests(unittest.TestCase):
 
 
 # ----------------------------------------------------------------------------------------------
-# Google Maps: location gate, 30-minute rule from real coordinates, live tracking
+# Google Maps: read-only fallback, unrestricted restaurant reach, live tracking
 # ----------------------------------------------------------------------------------------------
 maps_service = importlib.import_module('maps_service')
 
@@ -1013,74 +1453,71 @@ class GoogleMapsTests(unittest.TestCase):
         r = c.post('/login', {'email': 'alice.customer@example.com', 'password': 'AlicePass123!'})
         return c, r
 
-    # --- location gate -------------------------------------------------------------------------
-    def test_customer_is_asked_for_location_on_every_login(self):
+    # --- read-only browsing --------------------------------------------------------------------
+    def test_customer_can_browse_without_confirming_location(self):
         c, r = self.new_customer()
-        self.assertIn('Where should we deliver', text(r))
-        self.assertIn('Where should we deliver', text(c.get('/')))          # browsing is blocked until confirmed
-        self.assertIn('Where should we deliver', text(c.get('/cart')))
+        self.assertIn('Read-only browsing', text(r))
+        self.assertIn('Read-only browsing', text(c.get('/')))
+        self.assertNotIn('Add Veg Thali to cart', text(c.get('/restaurant/1')))
+        location_page = text(c.get('/location'))
+        self.assertIn('Continue browsing read-only', location_page)
+        self.assertNotIn('Select an area', location_page)
+        self.assertIn('Set a delivery location before adding items', text(c.post('/add_to_cart', {'item_id': 1})))
+        self.assertIn('Your cart is empty', text(c.get('/cart')))
+        guest = Client()
+        self.assertIn('Read-only browsing', text(guest.get('/')))
+        guest_menu = text(guest.get('/restaurant/1'))
+        self.assertIn('Veg Thali', guest_menu)
+        self.assertNotIn('Add Veg Thali to cart', guest_menu)
         r = c.post('/location', {'lat': HOME[0], 'lon': HOME[1], 'address': 'Linking Road'})
-        self.assertIn('Delivers to you in 30 minutes', text(r))
+        self.assertIn('13 min', text(r))
         saved = db().execute("SELECT lat, lon, location_address FROM users WHERE email = 'alice.customer@example.com'").fetchone()
         self.assertEqual((saved['lat'], saved['location_address']), (HOME[0], 'Linking Road'))
-        c2, r2 = self.new_customer()                                        # a new login asks again, pre-filled
-        self.assertIn('Where should we deliver', text(r2))
-        self.assertIn('Confirm this location', text(r2))
+        c.post('/location', {'action': 'skip'})
+        self.assertIn('Read-only browsing', text(c.get('/')))
+        c2, r2 = self.new_customer()
+        self.assertIn('Read-only browsing', text(r2))
+        self.assertIn('Confirm this location', text(c2.get('/location')))
 
-    def test_location_validation_and_area_fallback(self):
+    def test_location_validation_and_read_only_skip(self):
         c, _ = self.new_customer()
         for bad in ({'lat': '999', 'lon': '10'}, {'lat': 'abc', 'lon': '1'}, {'lat': '', 'lon': ''}):
             r = c.post('/location', bad)
-            self.assertIn('Please choose your delivery location', text(r))
-        r = c.post('/location', {'area': 'Dadar'})                           # no-JS / no-key path
-        self.assertIn('Delivers to you in 30 minutes', text(r))
+            self.assertIn('Choose a precise location', text(r))
+        self.assertIn('Read-only browsing', text(c.post('/location', {'action': 'skip'})))
         self.assertEqual(c.get('/').status_code, 200)
-        c.post('/location', {'area': 'Thane West, Thane'})
-        with c.c.session_transaction() as session:
-            self.assertEqual(session['address'], 'Thane West, Thane')
 
     def test_staff_are_not_asked_for_location(self):
         r = Client().post('/login', {'email': 'anna.admin@example.com', 'password': 'AnnaAdmin123!'})
         self.assertIn('Owner dashboard', text(r))
 
     # --- seeding ---------------------------------------------------------------------------------
-    def test_every_restaurant_and_driver_has_a_location(self):
+    def test_demo_restaurants_have_coordinates_without_backfilling_unknown_locations(self):
         c = db()
         self.assertEqual(c.execute('SELECT COUNT(*) FROM restaurants WHERE lat IS NULL OR lon IS NULL').fetchone()[0], 0)
-        self.assertEqual(c.execute("SELECT COUNT(*) FROM users WHERE role = 'delivery_agent' AND lat IS NULL").fetchone()[0], 0)
-        centers = [(area[1], area[2]) for area in maps_service.RESTAURANT_AREAS]
         restaurants = self.seeded_restaurant_locations
-        self.assertTrue(all(
-            min(maps_service.haversine_km((r['lat'], r['lon']), center) for center in centers) < 1
-            for r in restaurants
-        ))
-        self.assertTrue(any(
-            min(maps_service.haversine_km((r['lat'], r['lon']), center)
-                for center in (area[1:] for area in maps_service.RESTAURANT_AREAS[4:6])) < 1
-            for r in restaurants
-        ))
-        self.assertTrue(any(
-            maps_service.haversine_km((r['lat'], r['lon']), maps_service.RESTAURANT_AREAS[6][1:]) < 1
-            for r in restaurants
-        ))
-        # backfill only touches rows without a location
+        self.assertTrue(all(-90 <= r['lat'] <= 90 and -180 <= r['lon'] <= 180 for r in restaurants))
+        # An unknown real restaurant location is not replaced with a fake regional coordinate.
         c.execute("UPDATE restaurants SET lat = NULL, lon = NULL WHERE id = 1")
         c.commit()
         app_module.init_database()
-        self.assertIsNotNone(db().execute('SELECT lat FROM restaurants WHERE id = 1').fetchone()[0])
+        self.assertIsNone(db().execute('SELECT lat FROM restaurants WHERE id = 1').fetchone()[0])
 
-    # --- 30-minute rule --------------------------------------------------------------------------
-    def test_thirty_minute_rule_uses_customer_and_restaurant_coordinates(self):
+    # --- no delivery-area limits ----------------------------------------------------------------
+    def test_distant_restaurants_remain_visible_and_orderable(self):
+        c_db = db()
+        c_db.execute("UPDATE restaurants SET lat = 34.0522, lon = -118.2437 WHERE name = 'Coastal Kitchen'")
+        c_db.commit()
         c, _ = self.new_customer()
         c.post('/location', {'lat': HOME[0], 'lon': HOME[1], 'address': 'Bandra'})
         home = text(c.get('/'))
-        self.assertIn('Annapurna Meals', home.split('Over 30 minutes away')[0])
-        self.assertIn('Coastal Kitchen', home.split('Over 30 minutes away')[1])
-        # move the customer 40 km north: the nearby restaurants are now out of range
+        self.assertIn('Annapurna Meals', home)
+        self.assertIn('Coastal Kitchen', home)
+        self.assertNotIn('Over 30 minutes away', home)
         c.post('/location', {'lat': 19.45, 'lon': 72.85, 'address': 'Far north'})
         page = text(c.get('/'))
-        self.assertNotIn('Annapurna Meals', page.split('Over 30 minutes away')[0])
-        self.assertIn('too far', text(c.post('/add_to_cart', {'item_id': 1})))
+        self.assertIn('Annapurna Meals', page)
+        self.assertIn('added to cart', text(c.post('/add_to_cart', {'item_id': 1})))
 
     def test_google_matrix_is_batched_cached_and_parsed(self):
         def handler(url, payload):
@@ -1105,7 +1542,7 @@ class GoogleMapsTests(unittest.TestCase):
         c, _ = self.new_customer()
         r = c.post('/location', {'lat': HOME[0], 'lon': HOME[1], 'address': 'Bandra'})
         self.assertIn('approximate', text(r))
-        self.assertIn('Annapurna Meals', text(r).split('Over 30 minutes away')[0])
+        self.assertIn('Annapurna Meals', text(r))
 
     def test_polyline_decoder_rejects_malformed_data(self):
         with self.assertRaises(ValueError):

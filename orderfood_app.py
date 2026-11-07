@@ -7,8 +7,10 @@ Reset: delete orderfood.db, then start again.
 """
 
 import functools
+import csv
 import hashlib
 import hmac
+import io
 import json
 import math
 import os
@@ -16,6 +18,9 @@ import re
 import secrets
 import sqlite3
 import random
+import threading
+import tempfile
+import time
 
 import razorpay
 import requests
@@ -25,16 +30,40 @@ from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MAX_CONFIG_BYTES = 5 * 1024 * 1024
+SCHEMA_VERSION = 4
+_DATABASE_INIT_LOCK = threading.Lock()
+_INITIALIZED_DATABASE = None
+
+
+def _reject_duplicate_json_keys(pairs):
+    data = {}
+    for key, value in pairs:
+        if key in data:
+            raise ValueError(f'Duplicate JSON key: {key}')
+        data[key] = value
+    return data
+
+
+def _reject_json_constant(value):
+    raise ValueError(f'Non-standard JSON number is not allowed: {value}')
+
+
+def _load_json(path, description):
+    try:
+        if os.path.getsize(path) > MAX_CONFIG_BYTES:
+            raise RuntimeError(f'{description} exceeds the {MAX_CONFIG_BYTES}-byte size limit: {path}')
+        with open(path, encoding='utf-8') as fh:
+            return json.load(fh, object_pairs_hook=_reject_duplicate_json_keys)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError(f'{description} is unreadable or invalid: {path}') from exc
 
 
 def load_catalog(path=None):
     path = path or os.path.join(BASE_DIR, 'data', 'catalog.json')
-    try:
-        with open(path, encoding='utf-8') as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f'Could not load catalog configuration: {path}') from exc
-    if not isinstance(data, dict):
+    data = _load_json(path, 'Catalog configuration')
+    schema_version = data.get('schema_version') if isinstance(data, dict) else None
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int) or schema_version != 1:
         raise RuntimeError(f'Catalog configuration has an invalid shape: {path}')
     categories = data.get('categories')
     restaurants = data.get('restaurants')
@@ -43,24 +72,76 @@ def load_catalog(path=None):
     if (not isinstance(categories, list) or not categories or
             any(not isinstance(category, str) or not category.strip() for category in categories) or
             len(categories) != len(set(categories)) or not isinstance(restaurants, list) or
-            not restaurants or not isinstance(default_menu, list) or not isinstance(rules, list)):
+            not restaurants or not isinstance(default_menu, list) or not default_menu or
+            not isinstance(rules, list)):
         raise RuntimeError(f'Catalog configuration has an invalid shape: {path}')
-    slugs = [restaurant.get('slug') for restaurant in restaurants if isinstance(restaurant, dict)]
-    if (len(slugs) != len(restaurants) or
-            any(not isinstance(slug, str) or not slug.strip() for slug in slugs) or
-            len(slugs) != len(set(slugs))):
+    if any(not isinstance(category, str) or not category.strip() for category in categories):
+        raise RuntimeError(f'Catalog categories must be non-empty strings: {path}')
+
+    def valid_menu(menu):
+        if not isinstance(menu, list) or not menu:
+            return False
+        for item in menu:
+            if not isinstance(item, dict):
+                return False
+            price = item.get('price')
+            if isinstance(price, bool) or not isinstance(price, (int, float)):
+                return False
+            try:
+                price = float(price)
+            except (TypeError, ValueError, OverflowError):
+                return False
+            if (not isinstance(item.get('name'), str) or not item['name'].strip() or
+                    item.get('category') not in categories or
+                    not math.isfinite(price) or price <= 0 or
+                    not isinstance(item.get('available', True), bool)):
+                return False
+        return True
+
+    if not valid_menu(default_menu):
+        raise RuntimeError(f'Catalog default menu has invalid entries: {path}')
+    slugs = []
+    for restaurant in restaurants:
+        if not isinstance(restaurant, dict):
+            raise RuntimeError(f'Catalog restaurant entries must be objects: {path}')
+        slug = restaurant.get('slug')
+        if (not isinstance(slug, str) or
+                not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', slug)):
+            raise RuntimeError(f'Catalog restaurant slugs must be lowercase kebab-case: {path}')
+        if any(not isinstance(restaurant.get(field), str) or not restaurant[field].strip()
+               for field in ('name', 'address', 'description')):
+            raise RuntimeError(f'Catalog restaurant name, address, and description are required: {path}')
+        if 'menu' in restaurant and not valid_menu(restaurant['menu']):
+            raise RuntimeError(f'Catalog menu entries are invalid for {slug}: {path}')
+        style = restaurant.get('style', {})
+        if not isinstance(style, dict):
+            raise RuntimeError(f'Catalog presentation style is invalid for {slug}: {path}')
+        tone = style.get('tone', 1)
+        if isinstance(tone, bool) or not isinstance(tone, int) or tone not in range(1, 6):
+            raise RuntimeError(f'Catalog presentation tone is invalid for {slug}: {path}')
+        for field in ('photo', 'icon', 'cuisine'):
+            value = style.get(field)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise RuntimeError(f'Catalog presentation field {field} is invalid for {slug}: {path}')
+        photo = style.get('photo')
+        if photo and not re.fullmatch(r'photo-[A-Za-z0-9-]+', photo):
+            raise RuntimeError(f'Catalog photo identifier is invalid for {slug}: {path}')
+        slugs.append(slug)
+    if len(slugs) != len(set(slugs)):
         raise RuntimeError(f'Catalog restaurant slugs must be present and unique: {path}')
+    for rule in rules:
+        if (not isinstance(rule, dict) or rule.get('category') not in categories or
+                not isinstance(rule.get('keywords'), list) or not rule['keywords'] or
+                any(not isinstance(term, str) or not term.strip() for term in rule['keywords'])):
+            raise RuntimeError(f'Catalog category-normalization rules are invalid: {path}')
     return data
 
 
 def load_platform_settings(path=None):
     path = path or os.path.join(BASE_DIR, 'data', 'platform.json')
-    try:
-        with open(path, encoding='utf-8') as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f'Could not load platform settings: {path}') from exc
-    if not isinstance(data, dict):
+    data = _load_json(path, 'Platform settings')
+    schema_version = data.get('schema_version') if isinstance(data, dict) else None
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int) or schema_version != 1:
         raise RuntimeError(f'Platform settings have an invalid shape: {path}')
     delivery = data.get('delivery')
     wallet = data.get('wallet')
@@ -69,18 +150,21 @@ def load_platform_settings(path=None):
     if (not isinstance(delivery, dict) or not isinstance(wallet, dict) or
             not isinstance(payout, dict) or not isinstance(payout.get('rates'), dict) or
             not isinstance(payout.get('labels'), dict) or not isinstance(reasons, list) or
-            not reasons or any(not isinstance(reason, str) or not reason.strip() for reason in reasons)):
+            not reasons or any(not isinstance(reason, str) or not reason.strip() for reason in reasons) or
+            len(reasons) != len(set(reasons))):
         raise RuntimeError(f'Platform settings have an invalid shape: {path}')
     try:
-        max_minutes = int(delivery['max_minutes'])
-        pickup_buffer = int(delivery['pickup_buffer_minutes'])
-        demo_balance = float(wallet['demo_customer_balance'])
+        pickup_buffer = delivery['pickup_buffer_minutes']
+        demo_balance = wallet['demo_customer_balance']
         rates = payout['rates']
         labels = payout['labels']
-        if (max_minutes <= 0 or pickup_buffer < 0 or
-                not math.isfinite(demo_balance) or demo_balance < 0 or
+        if (isinstance(pickup_buffer, bool) or not isinstance(pickup_buffer, int) or pickup_buffer < 0 or
+                isinstance(demo_balance, bool) or not isinstance(demo_balance, (int, float)) or
+                not math.isfinite(float(demo_balance)) or demo_balance < 0 or
                 set(rates) != set(labels) or
-                any(not math.isfinite(float(rate)) or float(rate) < 0 for rate in rates.values()) or
+                any(isinstance(rate, bool) or not isinstance(rate, (int, float)) or
+                    not math.isfinite(float(rate)) or rate < 0
+                    for rate in rates.values()) or
                 any(not isinstance(label, str) or not label.strip() for label in labels.values())):
             raise ValueError
     except (KeyError, OverflowError, TypeError, ValueError) as exc:
@@ -97,6 +181,13 @@ maps_service.load_dotenv(os.path.join(BASE_DIR, '.env'))   # GOOGLE_MAPS_API_KEY
 app = Flask(__name__)
 app.config['DATABASE'] = os.environ.get('ORDERFOOD_DB', os.path.join(BASE_DIR, 'orderfood.db'))
 app.config['LEGACY_WALLET_FILE'] = os.environ.get('ORDERFOOD_WALLET', os.path.join(BASE_DIR, 'wallet.json'))
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
+try:
+    app.config['DATABASE_BUSY_TIMEOUT_MS'] = int(os.environ.get('ORDERFOOD_DB_BUSY_TIMEOUT_MS', '5000'))
+except ValueError as exc:
+    raise RuntimeError('ORDERFOOD_DB_BUSY_TIMEOUT_MS must be an integer between 1 and 60000.') from exc
+if not 1 <= app.config['DATABASE_BUSY_TIMEOUT_MS'] <= 60000:
+    raise RuntimeError('ORDERFOOD_DB_BUSY_TIMEOUT_MS must be an integer between 1 and 60000.')
 _deployment_environment = (os.environ.get('ORDERFOOD_ENV') or 'development').strip().lower()
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -140,7 +231,31 @@ def _load_secret_key():
 
 app.secret_key = _load_secret_key()
 
-MAX_DELIVERY_MINUTES = PLATFORM_SETTINGS['delivery']['max_minutes']
+
+def connect_database(path=None):
+    """Open a consistently configured SQLite connection for app and wallet operations."""
+    database = os.fspath(path or app.config['DATABASE'])
+    if database != ':memory:' and not database.startswith('file:'):
+        absolute_path = os.path.abspath(database)
+        os.makedirs(os.path.dirname(absolute_path), mode=0o700, exist_ok=True)
+        try:
+            descriptor = os.open(absolute_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            os.close(descriptor)
+        if os.name == 'posix':
+            os.chmod(absolute_path, 0o600)
+
+    timeout_ms = app.config['DATABASE_BUSY_TIMEOUT_MS']
+    conn = sqlite3.connect(database, timeout=timeout_ms / 1000, uri=database.startswith('file:'))
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
+    conn.execute(f'PRAGMA busy_timeout = {timeout_ms}')
+    conn.execute('PRAGMA synchronous = NORMAL')
+    conn.execute('PRAGMA trusted_schema = OFF')
+    return conn
+
 PICKUP_BUFFER_MIN = PLATFORM_SETTINGS['delivery']['pickup_buffer_minutes']
 DEMO_CUSTOMER_BALANCE = PLATFORM_SETTINGS['wallet']['demo_customer_balance']
 PAY_RATES = PLATFORM_SETTINGS['agent_payout']['rates']
@@ -169,10 +284,7 @@ class SqlWalletService:
         self.database = database
 
     def _connect(self):
-        conn = sqlite3.connect(self.database, timeout=10)
-        conn.row_factory = sqlite3.Row
-        conn.execute('PRAGMA foreign_keys = ON')
-        return conn
+        return connect_database(self.database)
 
     def ensure(self, key, initial=0.0):
         conn = self._connect()
@@ -268,9 +380,7 @@ map_service = maps_service.GoogleMapsService()
 
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(app.config['DATABASE'])
-        g.db.row_factory = sqlite3.Row
-        g.db.execute('PRAGMA foreign_keys = ON')
+        g.db = connect_database()
     return g.db
 
 
@@ -312,50 +422,6 @@ def restaurant_style(slug):
     }
 
 
-def restaurant_area_plan(rng):
-    areas = [area for area, weight in zip(
-        maps_service.RESTAURANT_AREAS, maps_service.RESTAURANT_AREA_WEIGHTS)
-        for _ in range(weight)]
-    if not areas:
-        raise RuntimeError('No restaurant service areas are configured.')
-    rng.shuffle(areas)
-    return areas
-
-
-def migrate_restaurant_locations(cur):
-    """Relocate the existing catalog once; later owner-edited locations remain untouched."""
-    version = cur.execute(
-        "SELECT value FROM app_metadata WHERE key = 'restaurant_locations_thane_mulund_v1'").fetchone()
-    if version:
-        return
-    rng = random.Random()
-    areas = restaurant_area_plan(rng)
-    restaurants = cur.execute('SELECT id FROM restaurants ORDER BY id').fetchall()
-    for index, (restaurant_id,) in enumerate(restaurants):
-        label, lat, lon = map_service.random_spot(areas[index % len(areas)], rng)
-        cur.execute('UPDATE restaurants SET lat = ?, lon = ?, address = ? WHERE id = ?',
-                    (lat, lon, label, restaurant_id))
-    cur.execute("INSERT INTO app_metadata (key, value) "
-                "VALUES ('restaurant_locations_thane_mulund_v1', '1')")
-
-
-def backfill_locations(cur):
-    """Give restaurants and delivery drivers without a location a random regional spot."""
-    rng = random.Random()
-    areas = restaurant_area_plan(rng)
-    rests = cur.execute('SELECT id, name, address FROM restaurants WHERE lat IS NULL OR lon IS NULL').fetchall()
-    for n, (rid, _name, addr) in enumerate(rests):
-        label, lat, lon = map_service.random_spot(areas[n % len(areas)], rng)
-        pretty = map_service.reverse_geocode(lat, lon)
-        generic = (addr or '').strip().lower() in ('', 'mumbai', 'far away')
-        cur.execute('UPDATE restaurants SET lat = ?, lon = ?, address = ? WHERE id = ?',
-                    (lat, lon, (pretty or label) if generic else addr, rid))
-    for (uid,) in cur.execute("SELECT id FROM users WHERE role = 'delivery_agent' AND (lat IS NULL OR lon IS NULL)").fetchall():
-        label, lat, lon = map_service.random_spot(rng=rng)
-        cur.execute('UPDATE users SET lat = ?, lon = ?, location_address = ?, location_updated_at = CURRENT_TIMESTAMP '
-                    'WHERE id = ?', (lat, lon, map_service.reverse_geocode(lat, lon) or label, uid))
-
-
 def migrate_legacy_wallet_file(cur):
     """Import balances and idempotency records from the former JSON wallet store."""
     path = app.config['LEGACY_WALLET_FILE']
@@ -363,11 +429,7 @@ def migrate_legacy_wallet_file(cur):
         return False
     if cur.execute("SELECT 1 FROM app_metadata WHERE key = 'legacy_wallet_migrated'").fetchone():
         return True
-    try:
-        with open(path, encoding='utf-8') as fh:
-            data = json.load(fh)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f'Legacy wallet file is not valid JSON: {path}') from exc
+    data = _load_json(path, 'Legacy wallet file')
     if not isinstance(data, dict):
         raise RuntimeError(f'Legacy wallet file has an invalid format: {path}')
 
@@ -475,12 +537,30 @@ def migrate_menu_categories(cur):
     cur.execute("INSERT INTO app_metadata (key, value) VALUES ('menu_categories_v3', '1')")
 
 
-def init_database():
-    conn = sqlite3.connect(app.config['DATABASE'])
+def _enable_wal(conn):
+    deadline = time.monotonic() + app.config['DATABASE_BUSY_TIMEOUT_MS'] / 1000
+    while True:
+        try:
+            mode = conn.execute('PRAGMA journal_mode = WAL').fetchone()[0].lower()
+            if mode not in {'wal', 'memory'}:
+                raise RuntimeError(f'SQLite refused WAL mode and selected {mode!r}.')
+            return
+        except sqlite3.OperationalError as exc:
+            if 'locked' not in str(exc).lower() or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+
+def _initialize_database(conn):
     cur = conn.cursor()
     demo_customer_ids = []
-    cur.execute('PRAGMA foreign_keys = ON')
+    _enable_wal(conn)
     cur.executescript('''
+    BEGIN IMMEDIATE;
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS restaurants (
         id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT, name TEXT NOT NULL, address TEXT NOT NULL,
         description TEXT, rating REAL DEFAULT 0.0, is_active INTEGER DEFAULT 1,
@@ -500,12 +580,34 @@ def init_database():
     CREATE TABLE IF NOT EXISTS account_applications (
         id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, name TEXT NOT NULL,
         requested_role TEXT NOT NULL CHECK (requested_role IN ('restaurant_admin', 'delivery_agent')),
-        restaurant_name TEXT, restaurant_address TEXT,
+        restaurant_name TEXT, restaurant_address TEXT, password_hash TEXT, restaurant_id INTEGER,
         status TEXT NOT NULL DEFAULT 'pending'
             CHECK (status IN ('pending', 'approved', 'rejected')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_account_applications_email
         ON account_applications(email) WHERE status = 'pending';
+    CREATE TABLE IF NOT EXISTS restaurant_intake (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, restaurant_name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE, address TEXT NOT NULL, description TEXT NOT NULL,
+        owner_name TEXT NOT NULL, owner_email TEXT NOT NULL,
+        menu_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'approved', 'rejected')),
+        restaurant_id INTEGER UNIQUE, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants(id));
+    CREATE TABLE IF NOT EXISTS restaurant_intake_menu_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, intake_id INTEGER NOT NULL,
+        name TEXT NOT NULL, description TEXT, price REAL NOT NULL CHECK (price > 0),
+        category TEXT NOT NULL, is_available INTEGER NOT NULL DEFAULT 1,
+        item_order INTEGER NOT NULL,
+        UNIQUE (intake_id, item_order),
+        FOREIGN KEY (intake_id) REFERENCES restaurant_intake(id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, actor_id INTEGER NOT NULL,
+        action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT NOT NULL,
+        details_json TEXT NOT NULL DEFAULT '{}',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (actor_id) REFERENCES users(id));
     CREATE TABLE IF NOT EXISTS wallets (
         user_id INTEGER PRIMARY KEY, balance REAL NOT NULL DEFAULT 0 CHECK (balance >= 0),
         currency TEXT NOT NULL DEFAULT 'INR',
@@ -552,6 +654,14 @@ def init_database():
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
         FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS delivery_tips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL UNIQUE,
+        customer_id INTEGER NOT NULL, agent_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (agent_id) REFERENCES users(id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS settlements (
         id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
         recipient_role TEXT NOT NULL CHECK (recipient_role IN ('restaurant', 'delivery_agent')),
@@ -562,6 +672,11 @@ def init_database():
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
     ''')
+    current_version = cur.execute('PRAGMA user_version').fetchone()[0]
+    if current_version > SCHEMA_VERSION:
+        raise RuntimeError(
+            f'Database schema version {current_version} is newer than this application supports '
+            f'({SCHEMA_VERSION}).')
     # Upgrade databases created by the older version of the app.
     for table, column, ddl in [
         ('restaurants', 'is_open', 'INTEGER DEFAULT 1'),
@@ -592,6 +707,9 @@ def init_database():
         ('transactions', 'user_id', 'INTEGER'),
     ]:
         _ensure_column(cur, table, column, ddl)
+    _ensure_column(cur, 'account_applications', 'password_hash', 'TEXT')
+    _ensure_column(cur, 'account_applications', 'restaurant_id', 'INTEGER')
+    _ensure_column(cur, 'restaurant_intake', 'menu_json', "TEXT NOT NULL DEFAULT '[]'")
 
     seeded_slugs = {restaurant['name']: restaurant['slug'] for restaurant in CATALOG['restaurants']}
     for restaurant_id, name, slug in cur.execute(
@@ -610,19 +728,21 @@ def init_database():
         cur.execute('INSERT INTO menu_categories (name, sort_order) VALUES (?,?) '
                     'ON CONFLICT(name) DO UPDATE SET sort_order = excluded.sort_order',
                     (category, index))
-    cur.executescript('''
+    cur.execute('''
     CREATE TRIGGER IF NOT EXISTS menu_category_insert_guard
     BEFORE INSERT ON menu_items
     WHEN NOT EXISTS (SELECT 1 FROM menu_categories WHERE name = NEW.category)
     BEGIN
         SELECT RAISE(ABORT, 'Unknown menu category');
-    END;
+    END
+    ''')
+    cur.execute('''
     CREATE TRIGGER IF NOT EXISTS menu_category_update_guard
     BEFORE UPDATE OF category ON menu_items
     WHEN NOT EXISTS (SELECT 1 FROM menu_categories WHERE name = NEW.category)
     BEGIN
         SELECT RAISE(ABORT, 'Unknown menu category');
-    END;
+    END
     ''')
 
     # Ratings on earlier versions were seeded sample values, not customer feedback.
@@ -634,11 +754,14 @@ def init_database():
 
     if cur.execute('SELECT COUNT(*) FROM restaurants').fetchone()[0] == 0:
         known_categories = set(menu_category_names(cur))
+        rng = random.Random()
         for restaurant in CATALOG['restaurants']:
+            _label, lat, lon = map_service.random_spot(rng=rng)
             rid = cur.execute(
-                'INSERT INTO restaurants (slug, name, address, description, rating) VALUES (?,?,?,?,?)',
+                'INSERT INTO restaurants (slug, name, address, description, rating, lat, lon) '
+                'VALUES (?,?,?,?,?,?,?)',
                 (restaurant['slug'], restaurant['name'], restaurant['address'],
-                 restaurant['description'], 0)).lastrowid
+                 restaurant['description'], 0, lat, lon)).lastrowid
             items = restaurant.get('menu', CATALOG['default_menu'])
             for item in items:
                 if item['category'] not in known_categories:
@@ -661,21 +784,185 @@ def init_database():
     if _deployment_environment in {'production', 'prod'}:
         disable_default_demo_credentials(cur)
     cur.execute('DROP TABLE IF EXISTS geocode_cache')          # leftover from an older experiment
-    migrate_restaurant_locations(cur)
-    backfill_locations(cur)
     migrate_menu_categories(cur)
     legacy_wallet_file = migrate_legacy_wallet_file(cur)
-    conn.commit()
+    if current_version < 1:
+        cur.execute("INSERT INTO schema_migrations (version, name) VALUES (1, 'baseline schema')")
+    if current_version < 2:
+        indexes = (
+            'CREATE INDEX IF NOT EXISTS idx_orders_user_id_id ON orders(user_id, id DESC)',
+            'CREATE INDEX IF NOT EXISTS idx_orders_restaurant_id_id ON orders(restaurant_id, id DESC)',
+            'CREATE INDEX IF NOT EXISTS idx_orders_status_id ON orders(status, id)',
+            'CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)',
+            'CREATE INDEX IF NOT EXISTS idx_deliveries_order_id ON deliveries(order_id)',
+            'CREATE INDEX IF NOT EXISTS idx_deliveries_agent_status ON deliveries(delivery_agent_id, status)',
+            'CREATE INDEX IF NOT EXISTS idx_deliveries_offer_status_expiry '
+            'ON deliveries(offer_agent_id, status, offer_expires_at)',
+            'CREATE INDEX IF NOT EXISTS idx_delivery_rejections_agent_delivery '
+            'ON delivery_rejections(agent_id, delivery_id)',
+            'CREATE INDEX IF NOT EXISTS idx_notifications_user_unread '
+            'ON notifications(user_id, is_read, id DESC)',
+            'CREATE INDEX IF NOT EXISTS idx_transactions_user_type_created '
+            'ON transactions(user_id, type, created_at)',
+            'CREATE INDEX IF NOT EXISTS idx_settlements_user_role_status '
+            'ON settlements(user_id, recipient_role, status)',
+            'CREATE INDEX IF NOT EXISTS idx_reviews_restaurant_id '
+            'ON reviews(restaurant_id, id DESC)',
+            'CREATE INDEX IF NOT EXISTS idx_menu_items_restaurant_category '
+            'ON menu_items(restaurant_id, category, id)',
+            'CREATE INDEX IF NOT EXISTS idx_applications_status_created '
+            'ON account_applications(status, created_at DESC)',
+        )
+        for statement in indexes:
+            cur.execute(statement)
+        cur.execute("INSERT INTO schema_migrations (version, name) "
+                    "VALUES (2, 'operational query indexes')")
+    if current_version < 3:
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_restaurant_intake_status_created '
+                    'ON restaurant_intake(status, created_at DESC)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_restaurant_intake_owner_email_status '
+                    'ON restaurant_intake(owner_email, status)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_created '
+                    'ON admin_audit_log(created_at DESC)')
+        cur.execute("INSERT INTO schema_migrations (version, name) "
+                    "VALUES (3, 'restaurant onboarding and audit')")
+    if current_version < 4:
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_restaurant_intake_menu_items '
+                    'ON restaurant_intake_menu_items(intake_id, item_order)')
+        cur.execute("INSERT INTO schema_migrations (version, name) "
+                    "VALUES (4, 'bulk restaurant menu staging')")
+    cur.execute(f'PRAGMA user_version = {SCHEMA_VERSION}')
     user_ids = [row[0] for row in cur.execute('SELECT id FROM users').fetchall()]
-    conn.close()
+    conn.commit()
+    return user_ids, demo_customer_ids, legacy_wallet_file
+
+
+def init_database():
+    global _INITIALIZED_DATABASE
+    conn = connect_database()
+    try:
+        user_ids, demo_customer_ids, legacy_wallet_file = _initialize_database(conn)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
     for uid in user_ids:
         initial_balance = DEMO_CUSTOMER_BALANCE if uid in demo_customer_ids else 0.0
         wallet_service.ensure(uid, initial_balance)
     if legacy_wallet_file:
         try:
             os.remove(app.config['LEGACY_WALLET_FILE'])
-        except FileNotFoundError:
-            pass
+        except OSError as exc:
+            app.logger.warning('Legacy wallet data was imported but could not be removed: %s', exc)
+    _INITIALIZED_DATABASE = _database_identity()
+
+
+def _database_identity():
+    path = os.fspath(app.config['DATABASE'])
+    return path if path.startswith('file:') else os.path.abspath(path)
+
+
+def ensure_database_initialized():
+    if _INITIALIZED_DATABASE == _database_identity():
+        return
+    with _DATABASE_INIT_LOCK:
+        if _INITIALIZED_DATABASE != _database_identity():
+            init_database()
+
+
+def database_health(path=None):
+    database = os.fspath(path or app.config['DATABASE'])
+    if database != ':memory:' and not database.startswith('file:') and not os.path.isfile(database):
+        raise FileNotFoundError(f'SQLite database does not exist: {database}')
+    conn = connect_database(database)
+    try:
+        integrity = [row[0] for row in conn.execute('PRAGMA integrity_check')]
+        foreign_keys = [tuple(row) for row in conn.execute('PRAGMA foreign_key_check')]
+        version = conn.execute('PRAGMA user_version').fetchone()[0]
+        return {'schema_version': version, 'integrity': integrity, 'foreign_key_violations': foreign_keys}
+    finally:
+        conn.close()
+
+
+def backup_database(destination, source=None):
+    source_path = os.fspath(source or app.config['DATABASE'])
+    if source_path != ':memory:' and not source_path.startswith('file:') and not os.path.isfile(source_path):
+        raise FileNotFoundError(f'SQLite database does not exist: {source_path}')
+    destination_path = os.path.abspath(os.fspath(destination))
+    if destination_path == os.path.abspath(source_path):
+        raise ValueError('Backup destination must not be the live database file.')
+    if os.path.exists(destination_path):
+        raise FileExistsError(f'Backup destination already exists: {destination_path}')
+
+    parent = os.path.dirname(destination_path)
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    fd, temporary_path = tempfile.mkstemp(prefix='.orderfood-backup-', suffix='.tmp', dir=parent)
+    os.close(fd)
+    if os.name == 'posix':
+        os.chmod(temporary_path, 0o600)
+    source_conn = destination_conn = None
+    try:
+        source_conn = connect_database(source_path)
+        destination_conn = sqlite3.connect(temporary_path)
+        source_conn.backup(destination_conn)
+        check = [row[0] for row in destination_conn.execute('PRAGMA integrity_check')]
+        if check != ['ok']:
+            raise RuntimeError(f'Backup failed SQLite integrity validation: {check}')
+        violations = [tuple(row) for row in destination_conn.execute('PRAGMA foreign_key_check')]
+        if violations:
+            raise RuntimeError(f'Backup contains foreign-key violations: {violations}')
+        destination_conn.close()
+        destination_conn = None
+        source_conn.close()
+        source_conn = None
+        with open(temporary_path, 'rb+') as backup_file:
+            os.fsync(backup_file.fileno())
+        try:
+            os.link(temporary_path, destination_path)
+        except FileExistsError:
+            raise FileExistsError(f'Backup destination already exists: {destination_path}') from None
+        os.remove(temporary_path)
+        return destination_path
+    finally:
+        if destination_conn is not None:
+            destination_conn.close()
+        if source_conn is not None:
+            source_conn.close()
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
+
+def create_platform_admin(email, name, password):
+    email = email.strip().lower()
+    name = name.strip()
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email) or len(email) > 254:
+        raise ValueError('Enter a valid platform administrator email address.')
+    if not name or len(name) > 120:
+        raise ValueError('Administrator name must contain 1-120 characters.')
+    if len(password) < 16:
+        raise ValueError('Platform administrator passwords must be at least 16 characters.')
+    conn = connect_database()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        if conn.execute('SELECT 1 FROM users WHERE email = ?', (email,)).fetchone():
+            raise ValueError('That email already belongs to an account; no role was changed.')
+        user_id = conn.execute(
+            'INSERT INTO users (email, name, password, role) VALUES (?,?,?,?)',
+            (email, name, generate_password_hash(password), 'platform_admin')).lastrowid
+        conn.execute(
+            'INSERT INTO admin_audit_log (actor_id, action, target_type, target_id, details_json) '
+            'VALUES (?,?,?,?,?)',
+            (user_id, 'platform_admin_create', 'user', str(user_id),
+             json.dumps({'provisioning': 'trusted_cli'}, separators=(',', ':'))))
+        conn.commit()
+        return user_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -686,6 +973,11 @@ def csrf_token():
     if '_csrf' not in session:
         session['_csrf'] = secrets.token_hex(16)
     return session['_csrf']
+
+
+@app.before_request
+def initialize_database_before_request():
+    ensure_database_initialized()
 
 
 @app.before_request
@@ -729,10 +1021,11 @@ def label(status):
 
 def role_home(role):
     return {'restaurant_admin': 'restaurant_dashboard',
-            'delivery_agent': 'delivery_agent_dashboard'}.get(role, 'home')
+            'delivery_agent': 'delivery_agent_dashboard',
+            'platform_admin': 'admin_restaurants'}.get(role, 'home')
 
 
-def login_required(role=None, need_location=True):
+def login_required(role=None):
     def wrapper(f):
         @functools.wraps(f)
         def decorated(*args, **kwargs):
@@ -742,10 +1035,6 @@ def login_required(role=None, need_location=True):
             if role and session.get('role') != role:
                 flash('That page is not available for your account type.', 'error')
                 return redirect(url_for(role_home(session.get('role'))))
-            if need_location and session.get('role') == 'customer' and not session.get('loc_ok'):
-                # Like Zomato/Swiggy: a customer must confirm where to deliver before browsing.
-                return redirect(url_for('location', next=request.path) if request.method == 'GET'
-                                else url_for('location'))
             return f(*args, **kwargs)
         return decorated
     return wrapper
@@ -754,6 +1043,28 @@ def login_required(role=None, need_location=True):
 def safe_next(default):
     nxt = request.form.get('next', '')
     return nxt if nxt.startswith('/') and not nxt.startswith('//') else default
+
+
+def record_admin_action(db, actor_id, action, target_type, target_id, details=None):
+    db.execute(
+        'INSERT INTO admin_audit_log (actor_id, action, target_type, target_id, details_json) '
+        'VALUES (?,?,?,?,?)',
+        (actor_id, action, target_type, str(target_id),
+         json.dumps(details or {}, sort_keys=True, separators=(',', ':'))))
+
+
+def create_staged_restaurant(db, intake):
+    restaurant_id = db.execute(
+        'INSERT INTO restaurants (slug, name, address, description, rating, is_active) '
+        'VALUES (?,?,?,?,0,0)',
+        (intake['slug'], intake['restaurant_name'], intake['address'],
+         intake['description'])).lastrowid
+    db.execute(
+        'INSERT INTO menu_items (restaurant_id, name, description, price, category, is_available) '
+        'SELECT ?, name, description, price, category, is_available '
+        'FROM restaurant_intake_menu_items WHERE intake_id = ? ORDER BY item_order',
+        (restaurant_id, intake['id']))
+    return restaurant_id
 
 
 def wallet_key():
@@ -774,7 +1085,7 @@ def inject_globals():
     uid = session.get('user_id')
     if not uid:
         return {'wallet': {'balance': 0, 'currency': 'INR'}, 'current_user': 'Guest',
-                'cart_count': 0, 'unread': 0, 'FOOD_CATEGORIES': []}
+                'cart_count': 0, 'unread': 0, 'FOOD_CATEGORIES': [], 'can_order': False}
     db = get_db()
     unread = db.execute('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0',
                         (uid,)).fetchone()[0]
@@ -784,6 +1095,8 @@ def inject_globals():
         'cart_count': sum(session.get('cart', {}).values()),
         'unread': unread,
         'FOOD_CATEGORIES': menu_category_names(db),
+        'can_order': session.get('role') == 'customer' and session.get('loc_ok') is True
+                     and bool(session.get('loc')),
     }
 
 
@@ -808,8 +1121,9 @@ def register():
     if request.method == 'POST':
         email = (request.form.get('email') or '').strip().lower()
         name = (request.form.get('name') or '').strip()
-        password = request.form.get('password') or ''
         account_type = request.form.get('account_type', 'customer')
+        password_field = 'password' if account_type == 'customer' else 'staff_password'
+        password = request.form.get(password_field) or ''
         note = (request.form.get('accessibility_note') or '').strip()[:200]
         restaurant_name = (request.form.get('restaurant_name') or '').strip()
         restaurant_address = (request.form.get('restaurant_address') or '').strip()
@@ -819,12 +1133,19 @@ def register():
             error = 'Choose a valid account type.'
         elif not email or not name:
             error = 'Name and email are required.'
+        elif len(name) > 120 or len(password) > 1024:
+            error = 'Name or password is longer than allowed.'
         elif len(email) > 254 or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
             error = 'Enter a valid email address.'
         elif account_type == 'customer' and len(password) < 8:
             error = 'Password must be at least 8 characters.'
+        elif account_type != 'customer' and len(password) < 12:
+            error = 'Staff application passwords must be at least 12 characters.'
         elif account_type == 'restaurant_admin' and (not restaurant_name or not restaurant_address):
             error = 'Restaurant name and address are required for a restaurant application.'
+        elif account_type == 'restaurant_admin' and (
+                len(restaurant_name) > 120 or len(restaurant_address) > 300):
+            error = 'Restaurant name or address is longer than allowed.'
         if error:
             flash(error, 'error')
             return render_template('register.html'), 400
@@ -834,14 +1155,34 @@ def register():
             if db.execute('SELECT 1 FROM users WHERE email = ?', (email,)).fetchone():
                 flash('This email is already registered.', 'error')
                 return render_template('register.html'), 400
+            claimed_restaurant = None
+            if account_type == 'restaurant_admin':
+                pending_intake = db.execute(
+                    "SELECT 1 FROM restaurant_intake WHERE owner_email = ? AND status = 'pending'",
+                    (email,)).fetchone()
+                if pending_intake:
+                    flash('A platform administrator must review the imported restaurant before you apply.',
+                          'error')
+                    return render_template('register.html'), 400
+                claimed_restaurant = db.execute(
+                    "SELECT ri.restaurant_id, r.name, r.address FROM restaurant_intake ri "
+                    "JOIN restaurants r ON r.id = ri.restaurant_id "
+                    "WHERE ri.owner_email = ? AND ri.status = 'approved' AND r.is_active = 0 "
+                    "AND NOT EXISTS (SELECT 1 FROM users u WHERE u.restaurant_id = r.id)",
+                    (email,)).fetchone()
+                if claimed_restaurant:
+                    restaurant_name = claimed_restaurant['name']
+                    restaurant_address = claimed_restaurant['address']
             try:
                 db.execute(
                     'INSERT INTO account_applications '
-                    '(email, name, requested_role, restaurant_name, restaurant_address) '
-                    'VALUES (?,?,?,?,?)',
+                    '(email, name, requested_role, restaurant_name, restaurant_address, password_hash, restaurant_id) '
+                    'VALUES (?,?,?,?,?,?,?)',
                     (email, name, account_type,
                      restaurant_name if account_type == 'restaurant_admin' else None,
-                     restaurant_address if account_type == 'restaurant_admin' else None))
+                     restaurant_address if account_type == 'restaurant_admin' else None,
+                     generate_password_hash(password),
+                     claimed_restaurant['restaurant_id'] if claimed_restaurant else None))
                 db.commit()
             except sqlite3.IntegrityError:
                 db.rollback()
@@ -868,6 +1209,343 @@ def register():
         flash('Account created successfully! Please log in.', 'success')
         return redirect(url_for('login'))
     return render_template('register.html')
+
+
+@app.route('/admin/restaurants')
+@login_required('platform_admin')
+def admin_restaurants():
+    db = get_db()
+    applications = db.execute(
+        "SELECT * FROM account_applications WHERE status = 'pending' ORDER BY created_at, id "
+        "LIMIT 200").fetchall()
+    intake_rows = db.execute(
+        "SELECT * FROM restaurant_intake WHERE status = 'pending' ORDER BY created_at, id "
+        "LIMIT 500").fetchall()
+    intake_rows = [dict(row, menu_preview=json.loads(row['menu_json'])) for row in intake_rows]
+    audit_rows = db.execute(
+        'SELECT a.*, u.name AS actor_name FROM admin_audit_log a '
+        'JOIN users u ON u.id = a.actor_id ORDER BY a.id DESC LIMIT 50').fetchall()
+    return render_template('admin_restaurants.html', applications=applications,
+                           intake_rows=intake_rows, audit_rows=audit_rows)
+
+
+@app.route('/admin/restaurants/import', methods=['POST'])
+@login_required('platform_admin')
+def admin_import_restaurants():
+    upload = request.files.get('csv_file')
+    if not upload or not upload.filename:
+        flash('Choose a CSV file to import.', 'error')
+        return redirect(url_for('admin_restaurants'))
+    content = upload.stream.read(2 * 1024 * 1024 + 1)
+    if len(content) > 2 * 1024 * 1024:
+        flash('CSV file exceeds the 2 MiB limit.', 'error')
+        return redirect(url_for('admin_restaurants'))
+    try:
+        text_content = content.decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(text_content, newline=''), strict=True)
+        required_headers = {
+            'restaurant_name', 'restaurant_slug', 'address', 'description',
+            'owner_name', 'owner_email', 'menu_json',
+        }
+        if not reader.fieldnames or len(reader.fieldnames) != len(set(reader.fieldnames)) or \
+                set(reader.fieldnames) != required_headers:
+            raise ValueError('CSV must contain exactly the required onboarding headers.')
+        rows = []
+        seen_slugs = set()
+        seen_emails = set()
+        db = get_db()
+        known_categories = set(menu_category_names(db))
+        for line_number, raw in enumerate(reader, start=2):
+            if line_number > 502:
+                raise ValueError('A single import may contain at most 500 restaurants.')
+            if None in raw or any(value is None for value in raw.values()):
+                raise ValueError(f'CSV row {line_number} has missing or extra columns.')
+            row = {key: (value or '').strip() for key, value in raw.items()}
+            for key, maximum in (
+                    ('restaurant_name', 120), ('restaurant_slug', 80), ('address', 300),
+                    ('description', 1000), ('owner_name', 120), ('owner_email', 254)):
+                if not row[key] or len(row[key]) > maximum:
+                    raise ValueError(f'CSV row {line_number} has an empty or oversized {key}.')
+            slug = row['restaurant_slug'].lower()
+            email = row['owner_email'].lower()
+            if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', slug):
+                raise ValueError(f'CSV row {line_number} has an invalid restaurant_slug.')
+            if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+                raise ValueError(f'CSV row {line_number} has an invalid owner_email.')
+            if len(row['menu_json']) > 500000:
+                raise ValueError(f'CSV row {line_number} has menu_json over 500,000 characters.')
+            try:
+                menu = json.loads(row['menu_json'], object_pairs_hook=_reject_duplicate_json_keys,
+                                  parse_constant=_reject_json_constant)
+            except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+                raise ValueError(f'CSV row {line_number} has invalid menu_json: {exc}') from exc
+            if not isinstance(menu, list) or not menu or len(menu) > 200:
+                raise ValueError(f'CSV row {line_number} must provide 1-200 menu items.')
+            validated_menu = []
+            for item in menu:
+                if not isinstance(item, dict) or not {'name', 'price', 'category'} <= set(item) or \
+                        set(item) - {'name', 'description', 'price', 'category', 'available'}:
+                    raise ValueError(f'CSV row {line_number} has an invalid menu item shape.')
+                name = item['name'].strip() if isinstance(item['name'], str) else ''
+                description = item.get('description', '')
+                category = item['category']
+                price = item['price']
+                available = item.get('available', True)
+                try:
+                    numeric_price = float(price)
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise ValueError(f'CSV row {line_number} has a nonnumeric menu price.') from exc
+                if (not name or len(name) > 120 or isinstance(price, bool) or
+                        not math.isfinite(numeric_price) or not 0.01 <= round(numeric_price, 2) <= 1_000_000 or
+                        not isinstance(category, str) or category not in known_categories or
+                        not isinstance(description, str) or len(description) > 500 or
+                        not isinstance(available, bool)):
+                    raise ValueError(f'CSV row {line_number} has an invalid menu item.')
+                validated_menu.append({
+                    'name': name, 'description': description.strip(),
+                    'price': round(numeric_price, 2), 'category': category,
+                    'available': available,
+                })
+            if slug in seen_slugs or email in seen_emails:
+                raise ValueError(f'CSV row {line_number} duplicates a slug or owner email in this file.')
+            seen_slugs.add(slug)
+            seen_emails.add(email)
+            rows.append((row['restaurant_name'], slug, row['address'], row['description'],
+                         row['owner_name'], email, validated_menu))
+        if not rows:
+            raise ValueError('CSV contains no restaurant rows.')
+    except (UnicodeDecodeError, csv.Error, ValueError) as exc:
+        flash(f'Import rejected: {exc}', 'error')
+        return redirect(url_for('admin_restaurants'))
+
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        pending_count = db.execute(
+            "SELECT COUNT(*) FROM restaurant_intake WHERE status = 'pending'").fetchone()[0]
+        inserted = 0
+        skipped = 0
+        for row in rows:
+            existing_slug = db.execute(
+                'SELECT id, owner_email, status FROM restaurant_intake WHERE slug = ?',
+                (row[1],)).fetchone()
+            existing_restaurant = db.execute(
+                'SELECT 1 FROM restaurants WHERE slug = ?', (row[1],)).fetchone()
+            existing_email = db.execute(
+                "SELECT slug FROM restaurant_intake WHERE owner_email = ? AND status != 'rejected'",
+                (row[5],)).fetchone()
+            if existing_slug:
+                if existing_slug['owner_email'] != row[5]:
+                    raise ValueError(f"Slug {row[1]!r} is already assigned to another owner.")
+                if existing_slug['status'] == 'rejected':
+                    if pending_count >= 500:
+                        raise ValueError('The review queue is full; review staged restaurants first.')
+                    db.execute(
+                        "UPDATE restaurant_intake SET restaurant_name = ?, address = ?, description = ?, "
+                        "owner_name = ?, menu_json = ?, status = 'pending', restaurant_id = NULL WHERE id = ?",
+                        (row[0], row[2], row[3], row[4],
+                         json.dumps(row[6], separators=(',', ':')), existing_slug['id']))
+                    db.execute('DELETE FROM restaurant_intake_menu_items WHERE intake_id = ?',
+                               (existing_slug['id'],))
+                    db.executemany(
+                        'INSERT INTO restaurant_intake_menu_items '
+                        '(intake_id, name, description, price, category, is_available, item_order) '
+                        'VALUES (?,?,?,?,?,?,?)',
+                        [(existing_slug['id'], item['name'], item['description'], item['price'],
+                          item['category'], int(item['available']), index)
+                         for index, item in enumerate(row[6])])
+                    inserted += 1
+                    pending_count += 1
+                    continue
+                skipped += 1
+                continue
+            if existing_restaurant:
+                raise ValueError(f"Slug {row[1]!r} is already used by a restaurant.")
+            if existing_email:
+                raise ValueError(f"Owner email {row[5]!r} is already assigned to an imported restaurant.")
+            if db.execute('SELECT 1 FROM users WHERE email = ?', (row[5],)).fetchone():
+                raise ValueError(f'Owner email {row[5]!r} already belongs to an account.')
+            if db.execute(
+                    "SELECT 1 FROM account_applications WHERE email = ? AND status = 'pending'",
+                    (row[5],)).fetchone():
+                raise ValueError(f'Owner email {row[5]!r} already has a pending application.')
+            if pending_count >= 500:
+                raise ValueError('The review queue is full; review staged restaurants first.')
+            inserted_row = db.execute(
+                'INSERT INTO restaurant_intake '
+                '(restaurant_name, slug, address, description, owner_name, owner_email, menu_json) '
+                'VALUES (?,?,?,?,?,?,?)',
+                (*row[:6], json.dumps(row[6], separators=(',', ':'))))
+            intake_id = inserted_row.lastrowid
+            db.executemany(
+                'INSERT INTO restaurant_intake_menu_items '
+                '(intake_id, name, description, price, category, is_available, item_order) '
+                'VALUES (?,?,?,?,?,?,?)',
+                [(intake_id, item['name'], item['description'], item['price'],
+                  item['category'], int(item['available']), index)
+                 for index, item in enumerate(row[6])])
+            inserted += 1
+            pending_count += 1
+        record_admin_action(db, session['user_id'], 'bulk_import', 'restaurant_intake',
+                            f'batch-{secrets.token_hex(8)}',
+                            {'inserted': inserted, 'skipped': skipped})
+        db.commit()
+    except (sqlite3.IntegrityError, ValueError) as exc:
+        db.rollback()
+        flash(f'Import rejected; no rows were staged: {exc}', 'error')
+        return redirect(url_for('admin_restaurants'))
+    flash(f'Import staged {inserted} restaurant(s); {skipped} idempotent row(s) were skipped. '
+          'Imported restaurants remain inactive until approved and claimed.', 'success')
+    return redirect(url_for('admin_restaurants'))
+
+
+@app.route('/admin/restaurants/intake/<int:intake_id>/<action>', methods=['POST'])
+@login_required('platform_admin')
+def admin_review_intake(intake_id, action):
+    if action not in {'approve', 'reject'}:
+        abort(404)
+    db = get_db()
+    intake = db.execute(
+        "SELECT * FROM restaurant_intake WHERE id = ? AND status = 'pending'", (intake_id,)).fetchone()
+    if not intake:
+        abort(404, 'Pending restaurant import was not found.')
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        if action == 'approve':
+            if db.execute('SELECT 1 FROM restaurants WHERE slug = ?', (intake['slug'],)).fetchone():
+                db.rollback()
+                flash('That restaurant slug is already in use; resolve the conflict before approval.', 'error')
+                return redirect(url_for('admin_restaurants'))
+            restaurant_id = create_staged_restaurant(db, intake)
+            db.execute("UPDATE restaurant_intake SET status = 'approved', restaurant_id = ? WHERE id = ?",
+                       (restaurant_id, intake_id))
+        else:
+            db.execute("UPDATE restaurant_intake SET status = 'rejected' WHERE id = ?", (intake_id,))
+        record_admin_action(db, session['user_id'], f'intake_{action}', 'restaurant_intake',
+                            intake_id, {'slug': intake['slug'], 'owner_email': intake['owner_email']})
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash('The review could not be saved because of a data conflict.', 'error')
+        return redirect(url_for('admin_restaurants'))
+    flash('Restaurant intake approved. It remains hidden until its owner account is approved.'
+          if action == 'approve' else 'Restaurant intake rejected.', 'success')
+    return redirect(url_for('admin_restaurants'))
+
+
+@app.route('/admin/restaurants/intake/bulk', methods=['POST'])
+@login_required('platform_admin')
+def admin_review_intake_bulk():
+    action = request.form.get('action')
+    raw_ids = request.form.getlist('intake_ids')
+    if action not in {'approve', 'reject'} or not raw_ids or len(raw_ids) > 500:
+        flash('Select between 1 and 500 restaurant intakes and choose an action.', 'error')
+        return redirect(url_for('admin_restaurants'))
+    try:
+        intake_ids = [int(value) for value in raw_ids]
+    except ValueError:
+        flash('The selected restaurant intake IDs are invalid.', 'error')
+        return redirect(url_for('admin_restaurants'))
+    if any(value < 1 for value in intake_ids) or len(intake_ids) != len(set(intake_ids)):
+        flash('The selected restaurant intake IDs are invalid or duplicated.', 'error')
+        return redirect(url_for('admin_restaurants'))
+
+    db = get_db()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        for intake_id in intake_ids:
+            intake = db.execute(
+                "SELECT * FROM restaurant_intake WHERE id = ? AND status = 'pending'",
+                (intake_id,)).fetchone()
+            if not intake:
+                raise ValueError(f'Intake {intake_id} is no longer pending.')
+            if action == 'approve':
+                if db.execute('SELECT 1 FROM restaurants WHERE slug = ?', (intake['slug'],)).fetchone():
+                    raise ValueError(f"Restaurant slug {intake['slug']!r} is already in use.")
+                restaurant_id = create_staged_restaurant(db, intake)
+                db.execute(
+                    "UPDATE restaurant_intake SET status = 'approved', restaurant_id = ? WHERE id = ?",
+                    (restaurant_id, intake_id))
+            else:
+                db.execute("UPDATE restaurant_intake SET status = 'rejected' WHERE id = ?",
+                           (intake_id,))
+            record_admin_action(db, session['user_id'], f'intake_{action}',
+                                'restaurant_intake', intake_id,
+                                {'slug': intake['slug'], 'owner_email': intake['owner_email']})
+        record_admin_action(db, session['user_id'], f'bulk_intake_{action}',
+                            'restaurant_intake_batch', secrets.token_hex(8),
+                            {'count': len(intake_ids), 'intake_ids': intake_ids})
+        db.commit()
+    except (sqlite3.IntegrityError, ValueError) as exc:
+        db.rollback()
+        flash(f'Bulk review was not applied: {exc}', 'error')
+        return redirect(url_for('admin_restaurants'))
+    outcome = 'approved' if action == 'approve' else 'rejected'
+    flash(f'{len(intake_ids)} restaurant intake(s) {outcome}. '
+          'Approved listings remain inactive until owner accounts are approved.', 'success')
+    return redirect(url_for('admin_restaurants'))
+
+
+@app.route('/admin/applications/<int:application_id>/<action>', methods=['POST'])
+@login_required('platform_admin')
+def admin_review_application(application_id, action):
+    if action not in {'approve', 'reject'}:
+        abort(404)
+    db = get_db()
+    application = db.execute(
+        "SELECT * FROM account_applications WHERE id = ? AND status = 'pending'",
+        (application_id,)).fetchone()
+    if not application:
+        abort(404, 'Pending application was not found.')
+    if action == 'approve' and not application['password_hash']:
+        flash('This legacy application has no stored password. Ask the applicant to submit a new application.',
+              'error')
+        return redirect(url_for('admin_restaurants'))
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        if action == 'approve':
+            restaurant_id = None
+            if application['requested_role'] == 'restaurant_admin':
+                restaurant_id = application['restaurant_id']
+                if restaurant_id:
+                    restaurant = db.execute(
+                        'SELECT is_active FROM restaurants WHERE id = ?', (restaurant_id,)).fetchone()
+                    if not restaurant or restaurant['is_active']:
+                        raise ValueError('The imported restaurant is unavailable or already claimed.')
+                    if db.execute('SELECT 1 FROM users WHERE restaurant_id = ?', (restaurant_id,)).fetchone():
+                        raise ValueError('The imported restaurant already has an owner account.')
+                    db.execute('UPDATE restaurants SET is_active = 1 WHERE id = ?', (restaurant_id,))
+                else:
+                    slug = restaurant_slug(application['restaurant_name'], db)
+                    restaurant_id = db.execute(
+                        'INSERT INTO restaurants (slug, name, address, description, rating, is_active) '
+                        'VALUES (?,?,?,?,0,1)',
+                        (slug, application['restaurant_name'], application['restaurant_address'],
+                         'New restaurant partner')).lastrowid
+            user_id = db.execute(
+                'INSERT INTO users (email, name, password, role, restaurant_id) VALUES (?,?,?,?,?)',
+                (application['email'], application['name'], application['password_hash'],
+                 application['requested_role'], restaurant_id)).lastrowid
+            db.execute(
+                "UPDATE account_applications SET status = 'approved', password_hash = NULL WHERE id = ?",
+                (application_id,))
+            record_admin_action(db, session['user_id'], 'application_approve',
+                                'account_application', application_id,
+                                {'email': application['email'], 'created_user_id': user_id,
+                                 'restaurant_id': restaurant_id})
+        else:
+            db.execute("UPDATE account_applications SET status = 'rejected', password_hash = NULL WHERE id = ?",
+                       (application_id,))
+            record_admin_action(db, session['user_id'], 'application_reject',
+                                'account_application', application_id,
+                                {'email': application['email']})
+        db.commit()
+    except (sqlite3.IntegrityError, ValueError) as exc:
+        db.rollback()
+        flash(f'Application could not be reviewed: {exc}', 'error')
+        return redirect(url_for('admin_restaurants'))
+    flash('Application approved; the account is now available for login.'
+          if action == 'approve' else 'Application rejected.', 'success')
+    return redirect(url_for('admin_restaurants'))
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -898,31 +1576,30 @@ def login():
             wallet_service.ensure(str(user['id']),
                                   0.0)
             if user['role'] == 'customer':
-                session['loc_ok'] = False                    # must (re)confirm the location every login
-                if user['lat'] is not None and user['lon'] is not None:
-                    session['loc'] = [user['lat'], user['lon']]
-                    session['address'] = user['location_address'] or ''
-                return redirect(url_for('location'))
+                session['loc_ok'] = False
+                session['loc'] = [user['lat'], user['lon']] if user['lat'] is not None and user['lon'] is not None else None
+                session['address'] = user['location_address'] or ''
+                return redirect(url_for('home'))
             return redirect(url_for(role_home(user['role'])))
         flash('Invalid email or password.', 'error')
     return render_template('login.html')
 
 
 @app.route('/location', methods=['GET', 'POST'])
-@login_required('customer', need_location=False)
+@login_required('customer')
 def location():
-    """Ask the customer where to deliver (search box, 'use my location', or drag the pin)."""
+    """Optionally confirm a delivery pin; customers can browse without a location."""
     db = get_db()
     if request.method == 'POST':
+        if request.form.get('action') == 'skip':
+            session['loc_ok'] = False
+            session['loc'] = None
+            session['address'] = ''
+            return redirect(safe_next(url_for('home')))
         point = maps_service.valid_point(request.form.get('lat'), request.form.get('lon'))
         address = (request.form.get('address') or '').strip()[:200]
-        if not point:                                            # no-JS / no-key fallback: pick an area
-            area = map_service.area_by_name(request.form.get('area', ''))
-            if area:
-                point = (area[1], area[2])
-                address = address or (area[0] if ', ' in area[0] else f'{area[0]}, Mumbai')
         if not point:
-            flash('Please choose your delivery location on the map or pick an area.', 'error')
+            flash('Choose a precise location to place orders, or continue browsing read-only.', 'error')
             return redirect(url_for('location'))
         address = address or f'Pinned location ({point[0]:.4f}, {point[1]:.4f})'
         db.execute('UPDATE users SET lat = ?, lon = ?, location_address = ?, location_updated_at = CURRENT_TIMESTAMP '
@@ -933,7 +1610,7 @@ def location():
     saved = session.get('loc')
     nxt = request.args.get('next', '')
     return render_template('location.html', saved=saved, address=session.get('address', ''),
-                           areas=maps_service.AREAS, next=nxt if nxt.startswith('/') and not nxt.startswith('//') else '')
+                           next=nxt if nxt.startswith('/') and not nxt.startswith('//') else '')
 
 
 @app.route('/logout')
@@ -947,21 +1624,21 @@ def logout():
 # ---------------------------------------------------------------------------
 
 def customer_point():
-    loc = session.get('loc')
+    loc = session.get('loc') if session.get('loc_ok') else None
     return (loc[0], loc[1]) if loc else None
 
 
 def eta_for_restaurants(rows):
-    """{restaurant_id: {'minutes', 'km', 'source'}} from each restaurant to the customer's confirmed
-    location. 'minutes' is the whole promise: drive time + PICKUP_BUFFER_MIN. Rows need id/lat/lon."""
+    """Return optional route estimates from restaurants to the confirmed customer location."""
     dest = customer_point()
     points = {r['id']: (r['lat'], r['lon']) for r in rows if r['lat'] is not None and r['lon'] is not None}
     drive = map_service.deliveries_eta(points, dest) if dest and points else {}
     out = {}
     for r in rows:
         e = drive.get(r['id'])
-        out[r['id']] = ({'minutes': math.ceil(e['minutes']) + PICKUP_BUFFER_MIN, 'km': e['km'], 'source': e['source']}
-                        if e else {'minutes': 999, 'km': None, 'source': 'none'})   # no location -> unreachable
+        out[r['id']] = ({'minutes': math.ceil(e['minutes']) + PICKUP_BUFFER_MIN,
+                         'km': e['km'], 'source': e['source']}
+                        if e else {'minutes': None, 'km': None, 'source': 'none'})
     if map_service.enabled and map_service.last_error and not session.get('maps_warned'):
         session['maps_warned'] = True
         flash('Live Google Maps data is unavailable right now, so delivery times are approximate.', 'warning')
@@ -969,7 +1646,6 @@ def eta_for_restaurants(rows):
 
 
 @app.route('/')
-@login_required('customer')
 def home():
     db = get_db()
     q = (request.args.get('q') or '').strip()
@@ -991,24 +1667,27 @@ def home():
             f"(SELECT 1 FROM menu_items m WHERE m.restaurant_id = r.id AND {item_match}))"
         )
         params = [like] * 8
-    reachable, too_far = [], []
+    reachable = []
     rows = db.execute(sql + ' ORDER BY feedback_rating DESC, r.name', params).fetchall()
     etas = eta_for_restaurants(rows)
     for r in rows:
         e = etas[r['id']]
-        (reachable if e['minutes'] <= MAX_DELIVERY_MINUTES else too_far).append((r, e['minutes'], e['km']))
-    reachable.sort(key=lambda x: x[1])
+        reachable.append((r, e['minutes'], e['km']))
+    reachable.sort(key=lambda x: x[1] if x[1] is not None else float('inf'))
 
-    awaiting = db.execute(
-        "SELECT o.*, r.name AS rest_name, "
-        "(SELECT group_concat(name || ' x' || qty, ', ') FROM order_items WHERE order_id = o.id) AS summary "
-        "FROM orders o JOIN restaurants r ON r.id = o.restaurant_id "
-        "WHERE o.user_id = ? AND o.status = 'delivered'", (session['user_id'],)).fetchall()
-    return render_template('home.html', reachable=reachable, too_far=too_far, q=q, awaiting=awaiting)
+    awaiting = []
+    if session.get('role') == 'customer':
+        awaiting = db.execute(
+            "SELECT o.*, r.name AS rest_name, "
+            "(SELECT group_concat(name || ' x' || qty, ', ') FROM order_items WHERE order_id = o.id) AS summary "
+            "FROM orders o JOIN restaurants r ON r.id = o.restaurant_id "
+            "WHERE o.user_id = ? AND o.status = 'delivered'", (session['user_id'],)).fetchall()
+    can_order = bool(customer_point())
+    return render_template('home.html', reachable=reachable, q=q, awaiting=awaiting,
+                           ordering_available=session.get('role') == 'customer' and can_order)
 
 
 @app.route('/restaurant/<int:rest_id>')
-@login_required('customer')
 def restaurant_detail(rest_id):
     db = get_db()
     rest = db.execute('SELECT * FROM restaurants WHERE id = ? AND is_active = 1', (rest_id,)).fetchone()
@@ -1026,8 +1705,9 @@ def restaurant_detail(rest_id):
     minutes = est['minutes']
     return render_template('restaurant_detail.html', restaurant=rest, menu_items=items,
                            feedback_rating=rating['average'], review_count=rating['count'], reviews=reviews,
-                           delivery_time=minutes, distance_km=est['km'], too_far=minutes > MAX_DELIVERY_MINUTES,
-                           cart=session.get('cart', {}))
+                           delivery_time=minutes, distance_km=est['km'],
+                           cart=session.get('cart', {}),
+                           ordering_available=session.get('role') == 'customer' and bool(customer_point()))
 
 
 # ---------------------------------------------------------------------------
@@ -1061,10 +1741,10 @@ def cart_groups(db):
                              'line': line, 'available': bool(r['is_available'])})
         grp['subtotal'] += line
     for grp in groups.values():
+        if not customer_point():
+            grp['problems'].append('Confirm your delivery location before ordering.')
         if not grp['is_open']:
             grp['problems'].append('This restaurant is currently closed.')
-        if grp['minutes'] > MAX_DELIVERY_MINUTES:
-            grp['problems'].append('This restaurant is too far to deliver to you.')
         if any(not i['available'] for i in grp['items']):
             grp['problems'].append('Some items are sold out.')
     return list(groups.values())
@@ -1085,9 +1765,8 @@ def add_to_cart():
         flash(f"{item['name']} is sold out.", 'error')
     elif not item['is_open']:
         flash('That restaurant is currently closed.', 'error')
-    elif eta_for_restaurants([{'id': item['restaurant_id'], 'lat': item['lat'], 'lon': item['lon']}])[
-            item['restaurant_id']]['minutes'] > MAX_DELIVERY_MINUTES:
-        flash('That restaurant is too far to deliver to you.', 'error')
+    elif not customer_point():
+        flash('Set a delivery location before adding items to your cart.', 'error')
     else:
         cart = dict(session.get('cart', {}))
         key = str(item['id'])
@@ -1234,6 +1913,49 @@ def razorpay_credentials():
             os.environ.get('RAZORPAY_KEY_SECRET', '').strip())
 
 
+def ensure_razorpay_payment_captured(order_id, payment_id, amount_paise):
+    """Confirm a payment belongs to this order and capture it before fulfillment."""
+    key_id, key_secret = razorpay_credentials()
+    if not key_id or not key_secret:
+        return jsonify(error='Razorpay is not configured on the server.'), 503
+
+    client = razorpay.Client(auth=(key_id, key_secret))
+    try:
+        payment = client.payment.fetch(payment_id)
+    except (razorpay.errors.BadRequestError, razorpay.errors.GatewayError,
+            razorpay.errors.ServerError, requests.exceptions.RequestException,
+            OSError, TimeoutError) as exc:
+        app.logger.warning('Razorpay payment lookup failed: %s', exc)
+        return jsonify(error='Could not confirm payment status. Please retry.'), 502
+
+    if (not isinstance(payment, dict) or payment.get('id') != payment_id or
+            payment.get('order_id') != order_id or payment.get('amount') != amount_paise or
+            payment.get('currency') != 'INR'):
+        app.logger.error('Razorpay payment details did not match order %s.', order_id)
+        return jsonify(error='Payment details do not match this order.'), 400
+
+    if payment.get('status') == 'captured' and payment.get('captured') is True:
+        return None
+    if payment.get('status') != 'authorized':
+        return jsonify(error='Payment has not been captured. Please retry or contact support.'), 409
+
+    try:
+        payment = client.payment.capture(payment_id, amount_paise)
+    except (razorpay.errors.BadRequestError, razorpay.errors.GatewayError,
+            razorpay.errors.ServerError, requests.exceptions.RequestException,
+            OSError, TimeoutError) as exc:
+        app.logger.warning('Razorpay payment capture failed for %s: %s', payment_id, exc)
+        return jsonify(error='Payment capture could not be confirmed. Please retry.'), 502
+
+    if (not isinstance(payment, dict) or payment.get('id') != payment_id or
+            payment.get('order_id') != order_id or payment.get('amount') != amount_paise or
+            payment.get('currency') != 'INR' or payment.get('status') != 'captured' or
+            payment.get('captured') is not True):
+        app.logger.error('Razorpay did not confirm capture for payment %s.', payment_id)
+        return jsonify(error='Payment capture could not be confirmed. Please retry.'), 502
+    return None
+
+
 def api_customer_error():
     if 'user_id' not in session:
         return jsonify(error='Authentication required. Please log in.'), 401
@@ -1320,14 +2042,14 @@ def api_create_order():
         return jsonify(error='Checkout session expired. Reload checkout and try again.'), 400
     if not address:
         return jsonify(error='Please enter a delivery address.'), 400
+    point = customer_point()
+    if not point:
+        return jsonify(error='Set a delivery location before placing an order.'), 400
     groups = cart_groups(get_db())
     if not groups or any(group['problems'] for group in groups):
         return jsonify(error='Fix the problems in your cart before paying.'), 400
     if open_orders_for(get_db(), session['user_id']):
         return jsonify(error='Finish your active order before placing another.'), 409
-    point = customer_point()
-    if not point:
-        return jsonify(error='Confirm your delivery location before paying.'), 400
     amount = int(round(sum(group['subtotal'] for group in groups) * 100))
     if amount < 100:
         return jsonify(error='Payment amount must be at least ₹1.00.'), 400
@@ -1405,6 +2127,26 @@ def api_verify_payment():
             if abs(sum(row['total_amount'] for row in existing) - expected_amount) > 0.01:
                 return jsonify(error='Recorded orders do not match this payment amount.'), 409
         return razorpay_payment_response(order_id, payment_id, existing)
+
+    intent = session.get('razorpay_intent')
+    if (not intent or intent.get('order_id') != order_id or
+            intent.get('user_id') != session['user_id']):
+        return jsonify(error='This payment session has expired. Check your orders before retrying.'), 400
+
+    cart = dict(session.get('cart', {}))
+    groups = cart_groups(db)
+    if not groups or any(group['problems'] for group in groups):
+        return jsonify(error='Your cart has changed or is no longer available. Contact support if payment was captured.'), 409
+    amount_paise = int(round(sum(group['subtotal'] for group in groups) * 100))
+    if (amount_paise != intent.get('amount') or
+            checkout_fingerprint(cart) != intent.get('cart_fingerprint')):
+        return jsonify(error='Your cart changed after payment started. Contact support if payment was captured.'), 409
+    if open_orders_for(db, session['user_id']):
+        return jsonify(error='An order is already active. Contact support if payment was captured.'), 409
+
+    payment_error = ensure_razorpay_payment_captured(order_id, payment_id, amount_paise)
+    if payment_error:
+        return payment_error
 
     return razorpay_payment_response(order_id, payment_id)
 
@@ -1512,10 +2254,69 @@ def orders():
             'LEFT JOIN users u ON u.id = d.delivery_agent_id WHERE d.order_id = ?', (selected['id'],)).fetchone()
         review = db.execute('SELECT rating, feedback FROM reviews WHERE order_id = ?',
                             (selected['id'],)).fetchone()
+        tip = db.execute('SELECT amount FROM delivery_tips WHERE order_id = ?',
+                         (selected['id'],)).fetchone()
         level = progress_level(selected, delivery)
         detail = {'order': selected, 'items': items, 'delivery': delivery, 'level': level,
-                  'review': review, 'steps': [(s, i + 1 <= level) for i, s in enumerate(TRACK_STEPS)]}
+                  'review': review, 'tip': tip,
+                  'steps': [(s, i + 1 <= level) for i, s in enumerate(TRACK_STEPS)]}
     return render_template('orders.html', rows=rows, detail=detail)
+
+
+@app.route('/orders/<int:order_id>/tip', methods=['POST'])
+@login_required('customer')
+def tip_delivery_agent(order_id):
+    amount = request.form.get('amount', type=int)
+    if amount is None or not 1 <= amount <= 5000:
+        flash('Enter a tip between ₹1 and ₹5,000.', 'error')
+        return redirect(url_for('orders', order=order_id))
+
+    db = get_db()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        order = db.execute(
+            "SELECT o.id, o.restaurant_id, o.status, d.delivery_agent_id "
+            "FROM orders o JOIN deliveries d ON d.order_id = o.id "
+            "WHERE o.id = ? AND o.user_id = ?", (order_id, session['user_id'])).fetchone()
+        if not order or order['status'] not in ('delivered', 'completed') or not order['delivery_agent_id']:
+            db.rollback()
+            flash('A tip is available only after an assigned delivery agent completes the delivery.', 'error')
+            return redirect(url_for('orders', order=order_id))
+        if db.execute('SELECT 1 FROM delivery_tips WHERE order_id = ?', (order_id,)).fetchone():
+            db.rollback()
+            flash('You have already tipped the delivery agent for this order.', 'error')
+            return redirect(url_for('orders', order=order_id))
+
+        deducted, message = wallet_service.deduct(
+            session['user_id'], amount, f'tip:customer:{order_id}', db=db)
+        if not deducted:
+            db.rollback()
+            flash(f'Tip could not be sent: {message}.', 'error')
+            return redirect(url_for('orders', order=order_id))
+        credited, message = wallet_service.credit(
+            order['delivery_agent_id'], amount, f'tip:agent:{order_id}', db=db)
+        if not credited:
+            db.rollback()
+            app.logger.error('Could not credit tip for order %s: %s', order_id, message)
+            flash('The tip could not be transferred. No money was taken.', 'error')
+            return redirect(url_for('orders', order=order_id))
+
+        db.execute('INSERT INTO delivery_tips (order_id, customer_id, agent_id, amount) VALUES (?,?,?,?)',
+                   (order_id, session['user_id'], order['delivery_agent_id'], amount))
+        db.execute(
+            "INSERT INTO transactions (order_id, restaurant_id, amount, type, payment_method, user_id) "
+            "VALUES (?,?,?,'agent_tip','wallet',?)",
+            (order_id, order['restaurant_id'], amount, order['delivery_agent_id']))
+        notify(db, order['delivery_agent_id'], f'You received a ₹{amount} tip for order #{order_id}.')
+        db.commit()
+    except sqlite3.Error:
+        db.rollback()
+        app.logger.exception('Could not record delivery tip for order %s', order_id)
+        flash('The tip could not be recorded. Please try again.', 'error')
+        return redirect(url_for('orders', order=order_id))
+
+    flash(f'Thank you. Your ₹{amount} tip was sent to the delivery agent.', 'success')
+    return redirect(url_for('orders', order=order_id))
 
 
 def _own_order_update(sql, order_id):
@@ -2194,7 +2995,7 @@ def delivery_agent_dashboard():
                          'payout': payout_for(agent['payment_method'], r['distance_km'] or 0,
                                               r['estimated_delivery_time'] or 0)})
     earned = db.execute(
-        "SELECT COALESCE((SELECT SUM(amount) FROM transactions WHERE type = 'agent_payout' "
+        "SELECT COALESCE((SELECT SUM(amount) FROM transactions WHERE type IN ('agent_payout', 'agent_tip') "
         "AND user_id = ? AND date(created_at) = date('now')), 0) + "
         "COALESCE((SELECT SUM(amount_paise / 100.0) FROM settlements WHERE user_id = ? "
         "AND recipient_role = 'delivery_agent' AND status IN ('submitted', 'paid') "
@@ -2534,13 +3335,42 @@ def agent_done(delivery_id):
     return render_template('agent_done.html', d=d)
 
 
-init_database()
-
 if __name__ == '__main__':
-    print('Google Maps: ' + ('enabled (key loaded)' if map_service.enabled else
-          'NOT configured - add GOOGLE_MAPS_API_KEY to .env (see README). Using offline estimates.'))
-    debug_enabled = (os.environ.get('FLASK_DEBUG') == '1' and
-                     _deployment_environment not in {'production', 'prod'})
-    app.run(debug=debug_enabled,
-            host=os.environ.get('ORDERFOOD_HOST', '127.0.0.1'),
-            port=int(os.environ.get('ORDERFOOD_PORT', 9000)))
+    import argparse
+
+    parser = argparse.ArgumentParser(description='OrderFood application and SQLite maintenance.')
+    commands = parser.add_subparsers(dest='command')
+    commands.add_parser('db-check', help='check SQLite integrity and foreign-key consistency')
+    backup_parser = commands.add_parser('db-backup', help='create an atomic SQLite backup')
+    backup_parser.add_argument('destination', help='new destination path; existing files are not overwritten')
+    admin_parser = commands.add_parser('admin-create', help='create a platform administrator account')
+    admin_parser.add_argument('email', help='email address for the new administrator')
+    admin_parser.add_argument('--name', required=True, help='administrator display name')
+    args = parser.parse_args()
+
+    if args.command == 'db-check':
+        health = database_health()
+        print(json.dumps(health, indent=2))
+        if health['integrity'] != ['ok'] or health['foreign_key_violations']:
+            raise SystemExit(1)
+    elif args.command == 'db-backup':
+        print(backup_database(args.destination))
+    elif args.command == 'admin-create':
+        import getpass
+
+        password = getpass.getpass('New administrator password (16+ characters): ')
+        confirmation = getpass.getpass('Confirm password: ')
+        if not hmac.compare_digest(password, confirmation):
+            raise SystemExit('Passwords do not match.')
+        init_database()
+        user_id = create_platform_admin(args.email, args.name, password)
+        print(f'Created platform administrator account {user_id}.')
+    else:
+        init_database()
+        print('Google Maps: ' + ('enabled (key loaded)' if map_service.enabled else
+              'NOT configured - add GOOGLE_MAPS_API_KEY to .env (see README). Using offline estimates.'))
+        debug_enabled = (os.environ.get('FLASK_DEBUG') == '1' and
+                         _deployment_environment not in {'production', 'prod'})
+        app.run(debug=debug_enabled,
+                host=os.environ.get('ORDERFOOD_HOST', '127.0.0.1'),
+                port=int(os.environ.get('ORDERFOOD_PORT', 9000)))

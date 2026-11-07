@@ -1,26 +1,19 @@
 {% extends "layout.html" %}
 {% block title %}Log in - OrderFood{% endblock %}
-{% block extra_head %}
-<style>body { background: var(--c-bg); }</style>
-{% endblock %}
 {% block body %}
-<div class="auth-shell">
-    <div class="auth-panel">
-        <div class="auth-card">
-            <p class="eyebrow">Food delivery, without the 30% cut.</p>
-            <h1 style="margin-top: 0">Log in</h1>
-            <form method="POST">
-                {{ csrf_input() }}
-                <label for="email">Email</label>
-                <input type="email" name="email" id="email" required autocomplete="username">
-                <label for="password">Password</label>
-                <input type="password" name="password" id="password" required autocomplete="current-password">
-                <p><button class="btn btn-accent btn-block" type="submit">Log in</button></p>
-            </form>
-            <p class="small muted">No account? <a href="{{ url_for('register') }}">Register here</a></p>
-        </div>
+<div class="auth-shell auth-shell-centered">
+    <div class="auth-card">
+        <p class="eyebrow">Food delivery, without the 30% cut.</p>
+        <h1>Log in</h1>
+        <form method="POST">
+            {{ csrf_input() }}
+            <label for="email">Email</label>
+            <input type="email" name="email" id="email" required autocomplete="username">
+            <label for="password">Password</label>
+            <input type="password" name="password" id="password" required autocomplete="current-password">
+            <p><button class="btn btn-accent btn-block" type="submit">Log in</button></p>
+        </form>
+        <p class="small muted">No account? <a href="{{ url_for('register') }}">Register here</a></p>
     </div>
 </div>
-{% endblock %}
-{% block extra_scripts %}
 {% endblock %}

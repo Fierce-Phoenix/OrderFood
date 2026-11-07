@@ -31,6 +31,15 @@ For a manual end-to-end browser test, configure Razorpay Test Mode credentials i
 The harness sets a temporary database path and test-only Flask/Razorpay configuration before importing the application. It should not alter your normal application database, wallet file, or real payment configuration.
 
 The test environment is restored and its temporary directory is removed when the test module exits.
-Do not invoke individual tests by importing the application first in the same process, since the
-application reads its database and provider configuration during import. Use `run_tests.py` or
-`python3 -m unittest test_app` so the isolated settings are applied before import.
+Use `run_tests.py` or `python3 -m unittest test_app` so the isolated settings are applied before
+import. Database initialization is lazy for WSGI imports and occurs before the first request;
+maintenance commands deliberately avoid initialization so a backup can be taken before a schema
+migration.
+
+The database tests cover WAL and per-connection safeguards, migration/version records, rollback
+after a failed legacy-wallet import, JSON validation, and atomic validated backups. They use
+temporary database/configuration paths and never run maintenance commands against the local app DB.
+
+Onboarding tests cover hashed pending credentials, admin-only approval, transactional provisioning,
+audit entries, malformed CSV rejection, repeated 100-row restaurant-and-menu import idempotence,
+transactional inactive staging, and owner claim/activation.

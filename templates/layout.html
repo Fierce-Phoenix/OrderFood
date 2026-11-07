@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}OrderFood{% endblock %}</title>
     <meta name="theme-color" content="#ffffff">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/premium.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global-foundation.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ui-components.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/page-layouts.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/application-theme.css') }}">
     {% block extra_head %}{% endblock %}
 </head>
 <body id="main-body">
@@ -32,19 +32,21 @@
         <nav class="nav" aria-label="Main navigation">
             <a href="{{ url_for('home') }}" class="brand" aria-label="OrderFood home">
                 <span class="brand-mark" aria-hidden="true">o</span>
-                <span>orderfood</span>
+                <span>OrderFood</span>
             </a>
             <div class="nav-links">
                 <a href="{{ url_for('home') }}" class="nav-link">Discover</a>
                 {% if session.get('user_id') %}
                     {% if session.get('role') == 'customer' %}
-                        <a href="{{ url_for('location') }}" class="nav-link nav-location" title="Change delivery location">{{ (session.get('address') or 'Set location')|truncate(24) }}</a>
+                        <a href="{{ url_for('location') }}" class="nav-link nav-location" title="Change delivery location">{{ (session.get('address') if can_order else 'Set location')|truncate(24) }}</a>
                         <a href="{{ url_for('orders') }}" class="nav-link">Orders</a>
                         <a href="{{ url_for('view_cart') }}" class="nav-link nav-cart">Bag <span class="nav-count">{{ cart_count }}</span></a>
                     {% elif session.get('role') == 'restaurant_admin' %}
                         <a href="{{ url_for('restaurant_dashboard') }}" class="nav-link">Dashboard</a>
                     {% elif session.get('role') == 'delivery_agent' %}
                         <a href="{{ url_for('delivery_agent_dashboard') }}" class="nav-link">Dashboard</a>
+                    {% elif session.get('role') == 'platform_admin' %}
+                        <a href="{{ url_for('admin_restaurants') }}" class="nav-link">Restaurant onboarding</a>
                     {% endif %}
                     <a href="{{ url_for('notifications') }}" class="nav-link">Activity{% if unread %}<span class="badge">{{ unread }}</span>{% endif %}</a>
                     <span class="wallet-info">{% if session.get('role') == 'restaurant_admin' %}Earnings{% elif session.get('role') == 'delivery_agent' %}Wallet{% else %}Balance{% endif %} {{ wallet['balance']|money }}</span>
